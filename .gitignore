@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+.env
+*.egg-info/
+build/
+dist/
+
+# uv
+# (uv.lock is committed)
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.ty_cache/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# State
+*.log
