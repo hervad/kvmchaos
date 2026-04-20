@@ -12,6 +12,7 @@ fault logic lives in `kvmchaos.faults`.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 
 import libvirt
 import typer
@@ -164,7 +165,7 @@ def inject_cmd(
 
 
 def _run_step(
-    func,
+    func: Callable[[libvirt.virDomain], None],
     domain: libvirt.virDomain,
     *,
     action: str,
