@@ -54,7 +54,13 @@ def _root(
         help="libvirt URI (overrides LIBVIRT_DEFAULT_URI).",
     ),
 ) -> None:
-    """Root callback — stashes --connect URI on the Typer context."""
+    """Root callback — stashes --connect URI on the Typer context.
+
+    Args:
+        ctx: Typer context object; used to pass the connect URI to subcommands.
+        version: If True, print version and exit (handled by eager callback).
+        connect_uri: libvirt URI override. Stored on ctx.obj for subcommands.
+    """
     ctx.ensure_object(dict)
     ctx.obj[_CTX_KEY] = connect_uri
 
