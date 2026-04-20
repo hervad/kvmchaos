@@ -1,5 +1,6 @@
 """Shared pytest fixtures using libvirt's in-process test driver."""
 
+import contextlib
 from collections.abc import Iterator
 
 import libvirt
@@ -30,7 +31,8 @@ def running_domain(test_conn: libvirt.virConnect) -> Iterator[libvirt.virDomain]
     domain = test_conn.lookupByName("test")
     _ensure_running(domain)
     yield domain
-    _ensure_running(domain)
+    with contextlib.suppress(libvirt.libvirtError):
+        _ensure_running(domain)  # Best-effort cleanup; test driver state is process-local
 
 
 def _ensure_running(domain: libvirt.virDomain) -> None:
