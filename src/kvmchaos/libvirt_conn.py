@@ -26,10 +26,10 @@ def resolve_uri(cli_flag: str | None) -> str:
     Returns:
         The URI string to pass to `libvirt.open`.
     """
-    if cli_flag:
+    if cli_flag is not None:
         return cli_flag
     env = os.environ.get("LIBVIRT_DEFAULT_URI")
-    if env:
+    if env:  # empty env var is treated as unset
         return env
     return DEFAULT_URI
 
@@ -50,9 +50,13 @@ def connect(uri: str | None = None) -> Iterator[libvirt.virConnect]:
     """
     resolved = resolve_uri(uri)
     conn = libvirt.open(resolved)
+    if conn is None:
+        # Reset any stale libvirt error state so our message is preserved.
+        libvirt.virResetLastError()
+        raise libvirt.libvirtError(f"libvirt.open({resolved!r}) returned None")
     try:
         yield conn
     finally:
         # libvirt raises if close() is called twice; we trust the caller
-        # not to close it inside the block.
-        conn.close()
+        # not to close it inside the with block.
+        conn.close()  # conn is guaranteed non-None here

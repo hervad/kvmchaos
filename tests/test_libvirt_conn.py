@@ -40,3 +40,10 @@ class TestConnect:
                 raise RuntimeError("boom")
         with pytest.raises(libvirt.libvirtError):
             conn.listAllDomains()
+
+    def test_connect_raises_on_none_connection(self):
+        from unittest.mock import patch
+
+        exc = pytest.raises(libvirt.libvirtError, match="returned None")
+        with patch("libvirt.open", return_value=None), exc, connect("test:///default"):
+            pass
