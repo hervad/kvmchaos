@@ -11,11 +11,16 @@ fault logic lives in `kvmchaos.faults`.
 
 from __future__ import annotations
 
+import time
+
+import libvirt
 import typer
 
 from kvmchaos import __version__
+from kvmchaos.eventlog import configure_logging, log_event
 from kvmchaos.faults import FAULTS
 from kvmchaos.libvirt_conn import connect
+from kvmchaos.safety import confirm
 
 app = typer.Typer(
     help="Agent-less chaos engineering for KVM/libvirt VMs.",
@@ -95,6 +100,112 @@ _STATE_NAMES: dict[int, str] = {
     6: "crashed",
     7: "suspended",
 }
+
+
+@app.command("inject")
+def inject_cmd(
+    ctx: typer.Context,
+    fault_name: str = typer.Argument(..., metavar="FAULT", help="Fault name. See `list-faults`."),
+    vm: str = typer.Argument(..., metavar="VM", help="Target VM name."),
+    assume_yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+) -> None:
+    """Inject a fault into a VM, verify it took effect, then revert.
+
+    Exits 0 on full success, 1 on runtime failure, 2 on usage error.
+
+    Args:
+        ctx: Typer context; carries the ``--connect`` URI.
+        fault_name: Name of the fault to inject (see ``list-faults``).
+        vm: Name of the target libvirt domain.
+        assume_yes: If True, skip the confirmation prompt.
+    """
+    configure_logging()
+
+    if fault_name not in FAULTS:
+        typer.echo(
+            f"Unknown fault: {fault_name!r}. Known faults: {', '.join(sorted(FAULTS))}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    fault = FAULTS[fault_name]
+
+    uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
+    with connect(uri) as conn:
+        try:
+            domain = conn.lookupByName(vm)
+        except libvirt.libvirtError as exc:
+            typer.echo(f"VM '{vm}' not found: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+
+        label = "DESTRUCTIVE" if fault.destructive else "reversible"
+        prompt = f"About to inject '{fault_name}' on VM '{vm}' ({label}). Continue?"
+        if not confirm(prompt, assume_yes=assume_yes):
+            typer.echo("Aborted.")
+            raise typer.Exit(code=1)
+
+        _run_step(fault.inject, domain, action="inject", fault_name=fault_name, vm=vm)
+
+        try:
+            _run_step(fault.verify, domain, action="verify", fault_name=fault_name, vm=vm)
+        except Exception:
+            # Verify failed — attempt revert to avoid leaving the VM broken,
+            # but don't let a revert failure mask the verify failure.
+            _run_step(
+                fault.revert,
+                domain,
+                action="revert",
+                fault_name=fault_name,
+                vm=vm,
+                swallow=True,
+            )
+            raise typer.Exit(code=1) from None
+
+        _run_step(fault.revert, domain, action="revert", fault_name=fault_name, vm=vm)
+
+
+def _run_step(
+    func,
+    domain: libvirt.virDomain,
+    *,
+    action: str,
+    fault_name: str,
+    vm: str,
+    swallow: bool = False,
+) -> None:
+    """Execute one fault step (inject, verify, or revert) and log the outcome.
+
+    Args:
+        func: Callable to invoke — one of ``fault.inject``, ``.verify``, ``.revert``.
+        domain: Live libvirt domain handle.
+        action: Event label for the log (``'inject'``, ``'verify'``, ``'revert'``).
+        fault_name: Fault registry key, included in the log event.
+        vm: VM name, included in the log event.
+        swallow: If True, log the error and return instead of re-raising.
+    """
+    t0 = time.monotonic()
+    try:
+        func(domain)
+    except Exception as exc:
+        log_event(
+            action=action,
+            fault=fault_name,
+            vm=vm,
+            result="fail",
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            error=str(exc),
+        )
+        if swallow:
+            typer.echo(f"{action} error (best-effort): {exc}", err=True)
+            return
+        typer.echo(f"{action} failed: {exc}", err=True)
+        raise
+    log_event(
+        action=action,
+        fault=fault_name,
+        vm=vm,
+        result="ok",
+        duration_ms=int((time.monotonic() - t0) * 1000),
+    )
 
 
 def _state_name(state: int) -> str:

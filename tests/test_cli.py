@@ -1,5 +1,8 @@
 """CLI tests using Typer's test runner."""
 
+import json
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from kvmchaos import __version__
@@ -43,3 +46,39 @@ class TestStateName:
         from kvmchaos.cli import _state_name
 
         assert _state_name(99) == "state99"
+
+
+class TestInject:
+    def test_inject_vm_pause_happy_path(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "inject", "vm.pause", "test", "--yes"],
+        )
+        assert result.exit_code == 0, result.stdout
+
+        log = (tmp_path / "kvmchaos" / "events.log").read_text().splitlines()
+        actions = [json.loads(line)["action"] for line in log if line.strip()]
+        assert actions == ["inject", "verify", "revert"]
+
+    def test_inject_unknown_fault_returns_2(self):
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "inject", "bogus", "test", "--yes"],
+        )
+        assert result.exit_code == 2
+
+    def test_inject_missing_vm_returns_2(self):
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "inject", "vm.pause", "nope", "--yes"],
+        )
+        assert result.exit_code == 2
+
+    def test_inject_without_yes_aborts_on_no(self):
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "inject", "vm.pause", "test"],
+            input="n\n",
+        )
+        assert result.exit_code == 1
