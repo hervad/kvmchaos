@@ -50,7 +50,8 @@ def default_log_path() -> Path:
 def configure_logging(path: Path | None = None) -> None:
     """Attach a rotating JSONL handler to the `kvmchaos.events` logger.
 
-    Idempotent: repeated calls with the same path do not add duplicate handlers.
+    Idempotent: once a handler is attached, repeated calls are no-ops regardless
+    of `path`. The first call's path wins for the lifetime of the process.
 
     Args:
         path: Target log file. Defaults to `default_log_path()`.
@@ -60,6 +61,8 @@ def configure_logging(path: Path | None = None) -> None:
 
     logger = logging.getLogger(_LOGGER_NAME)
     logger.setLevel(logging.INFO)
+    # propagate=False is load-bearing: record.msg is a raw dict, not a string.
+    # Re-enabling propagation would send the raw dict to the root logger's handlers.
     logger.propagate = False
 
     if logger.handlers:
