@@ -1,50 +1,62 @@
 # RESUME — kvmchaos v0.1 Execution Checkpoint
 
-**Saved:** 2026-04-20
-**Last active skill:** `superpowers:subagent-driven-development`
-**Next action:** Execute Task 1 inline.
+**Saved:** 2026-04-20 19:33 GMT+2
+**Status:** Implementation complete — awaiting user manual smoke tests (Task 12)
 
 ## What's done
 
-- Brainstorming complete. Design decisions locked in.
-- Spec written: [docs/superpowers/specs/2026-04-20-kvmchaos-v0.1-design.md](specs/2026-04-20-kvmchaos-v0.1-design.md)
-- Implementation plan written: [docs/superpowers/plans/2026-04-20-kvmchaos-v0.1.md](plans/2026-04-20-kvmchaos-v0.1.md)
-- Execution strategy approved (see "Strategy" below).
+All 11 automated tasks complete. 42 tests, 93% coverage, ruff clean.
 
-## What's next
-
-Start Task 1 of the plan. Strategy below.
-
-## Strategy (user-approved, 2026-04-20)
-
-- **Tasks 1, 2, 11 — inline.** Pure scaffolding and quality-gate commands. Subagent overhead outweighs value.
-- **Tasks 3-10 — subagent-driven** (implementer → spec reviewer → code-quality reviewer per task, per the `superpowers:subagent-driven-development` skill).
-- **Task 12 — hand back to user.** Manual smokes on a real KVM host against a throwaway lab VM.
-
-## Key decisions recap (from spec)
-
-| | |
+| Task | Status |
 |---|---|
-| Faults | `vm.pause`, `vm.kill` |
-| Interface | `Fault` Protocol with `inject`/`verify`/`revert` |
-| Registry | explicit dict in `src/kvmchaos/faults/__init__.py` |
-| CLI shape | `inject <fault> <vm>`, plus `list-vms`, `list-faults`, `--version` |
-| Safety | confirmation prompt + `--yes` bypass (no allowlist) |
-| Event log | JSONL via stdlib logging at `$XDG_STATE_HOME/kvmchaos/events.log` |
-| Test backend | `test:///default` primary, `MagicMock(spec=…)` only for error paths |
-| Python | 3.14+ |
-| Deps | `libvirt-python>=12.2.0`, `typer>=0.12`, (dev) `pytest`, `pytest-cov`, `ruff`, `ty` |
-| Style | Docstrings on public API; comments only for non-obvious why |
+| 1 — Repo skeleton (pyproject, git, docs) | ✅ done |
+| 2 — Package skeleton + `__version__` | ✅ done |
+| 3 — `libvirt_conn.py` | ✅ done |
+| 4 — `eventlog.py` | ✅ done |
+| 5 — `safety.py` | ✅ done |
+| 6 — Fault Protocol (`faults/base.py`) | ✅ done |
+| 7 — `vm.pause` fault + conftest | ✅ done |
+| 8 — `vm.kill` fault + registry wiring | ✅ done |
+| 9 — CLI: `--version`, `list-vms`, `list-faults` | ✅ done |
+| 10 — CLI: `inject` command | ✅ done |
+| 11 — Quality gates (pytest 93%, ruff clean) | ✅ done |
+| 12 — Manual smoke tests on real libvirt host | ⏳ user's turn |
 
-## Resume instructions for next Claude session
+## What's next: Task 12 (user runs these)
 
-1. Read this file and the plan file.
-2. Verify `/home/kai/kvmchaos` working tree state — a fresh session may find Task 1 already partially applied if this session got interrupted mid-run.
-3. Invoke `superpowers:subagent-driven-development` skill.
-4. Begin with Task 1 inline, then follow the strategy above.
-5. Commit cadence: one commit per task's final step.
+```bash
+# Confirm libvirt access
+virsh -c qemu:///system list --all
 
-## Current working-tree state
+# Basics
+uv run kvmchaos --version
+uv run kvmchaos list-vms
+uv run kvmchaos list-faults
 
-- `/home/kai/kvmchaos/` is otherwise empty — no git init yet, no source files.
-- Only `docs/superpowers/{specs,plans,RESUME.md}` exist.
+# Pause smoke (reversible)
+uv run kvmchaos inject vm.pause <vm-name>
+cat ~/.local/state/kvmchaos/events.log
+
+# Kill smoke (destructive — throwaway VM only)
+uv run kvmchaos inject vm.kill <vm-name> --yes
+cat ~/.local/state/kvmchaos/events.log
+
+# Negative cases
+uv run kvmchaos inject bogus <vm-name>      # expect exit 2
+uv run kvmchaos inject vm.pause no-such-vm  # expect exit 2
+```
+
+After smokes pass: flip checkboxes in `PLAN.md`, then `git tag v0.1.0`.
+
+## Repo state
+
+- Git: `main` branch, 13 commits
+- Working tree: clean
+- `src/kvmchaos/` — all modules implemented
+- `tests/` — 42 tests, 93% coverage
+
+## Key files
+
+- Spec: `docs/superpowers/specs/2026-04-20-kvmchaos-v0.1-design.md`
+- Plan: `docs/superpowers/plans/2026-04-20-kvmchaos-v0.1.md`
+- Plan: `docs/superpowers/plans/2026-04-20-kvmchaos-v0.1.md`
