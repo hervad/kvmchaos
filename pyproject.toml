@@ -54,3 +54,4 @@ convention = "google"
 [tool.pytest.ini_options]
 addopts = "-q --cov=kvmchaos --cov-report=term-missing"
 testpaths = ["tests"]
+pythonpath = ["src"]
