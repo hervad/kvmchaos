@@ -1,5 +1,8 @@
 """Tests for vm.freeze."""
 
+# test:///default does not implement cpu_shares scheduler attribute (QEMU-specific),
+# so all tests use MagicMock(spec=libvirt.virDomain).
+
 from unittest.mock import MagicMock
 
 import libvirt
@@ -58,3 +61,9 @@ class TestVmFreezeErrors:
         domain.schedulerParameters.side_effect = libvirt.libvirtError("boom")
         with pytest.raises(libvirt.libvirtError):
             VmFreezeFault().verify(domain)
+
+    def test_revert_propagates_libvirt_error(self):
+        domain = MagicMock(spec=libvirt.virDomain)
+        domain.setSchedulerParameters.side_effect = libvirt.libvirtError("boom")
+        with pytest.raises(libvirt.libvirtError):
+            VmFreezeFault().revert(domain)
