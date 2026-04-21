@@ -54,6 +54,13 @@ class TestVmStarveHappyPath:
         VmStarveFault().revert(domain)
         domain.setMemory.assert_called_once_with(_MAX_MEM_KB)
 
+    def test_verify_falls_back_to_max_when_actual_absent(self):
+        domain = self._mock_domain()
+        # memoryStats returns no "actual" key — fallback equals maxMemory(), above threshold
+        domain.memoryStats.return_value = {}
+        with pytest.raises(RuntimeError, match="not starved"):
+            VmStarveFault().verify(domain)
+
 
 class TestVmStarveErrors:
     def test_inject_propagates_libvirt_error(self):
