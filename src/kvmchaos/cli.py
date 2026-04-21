@@ -84,9 +84,10 @@ def list_vms(ctx: typer.Context) -> None:
 @app.command("list-faults")
 def list_faults() -> None:
     """List registered faults with descriptions."""
+    col_name = max(len(n) for n in FAULTS) if FAULTS else 0
     for name, fault in FAULTS.items():
         marker = "destructive" if fault.destructive else "safe"
-        typer.echo(f"{name}\t[{marker}]\t{fault.description}")
+        typer.echo(f"{name:<{col_name}}  [{marker:<11}]  {fault.description}")
 
 
 # Map libvirt domain state integers to human-readable strings.

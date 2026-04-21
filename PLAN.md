@@ -9,14 +9,14 @@ See `docs/superpowers/specs/2026-04-20-kvmchaos-v0.1-design.md` for the spec.
 
 ## Acceptance (v0.1)
 
-- [ ] `kvmchaos --version` prints the version
-- [ ] `kvmchaos list-vms` works without sudo on `qemu:///system`
-- [ ] `kvmchaos list-faults` lists both faults
-- [ ] `kvmchaos inject vm.pause <vm>` — inject/verify/revert cycle, all logged
-- [ ] `kvmchaos inject vm.kill <vm> --yes` — inject/verify/revert cycle, all logged
-- [ ] Unknown fault / missing VM → exit 2 with helpful message
-- [ ] `pytest` passes with coverage ≥85%
-- [ ] `ruff check`, `ruff format --check` clean
+- [x] `kvmchaos --version` prints the version
+- [x] `kvmchaos list-vms` works without sudo on `qemu:///system`
+- [x] `kvmchaos list-faults` lists both faults
+- [x] `kvmchaos inject vm.pause <vm>` — inject/verify/revert cycle, all logged
+- [x] `kvmchaos inject vm.kill <vm> --yes` — inject/verify/revert cycle, all logged
+- [x] Unknown fault / missing VM → exit 2 with helpful message
+- [x] `pytest` passes with coverage ≥85%
+- [x] `ruff check`, `ruff format --check` clean
 
 ## Backlog (post-v0.1, not scheduled)
 
