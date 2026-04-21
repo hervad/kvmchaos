@@ -1,62 +1,52 @@
-# RESUME — kvmchaos v0.1 Execution Checkpoint
+# RESUME — kvmchaos v0.2 Execution Checkpoint
 
-**Saved:** 2026-04-20 19:33 GMT+2
-**Status:** Implementation complete — awaiting user manual smoke tests (Task 12)
+**Saved:** 2026-04-21
+**Status:** v0.2.0 complete and tagged — ready for next feature cycle
 
 ## What's done
 
-All 11 automated tasks complete. 42 tests, 93% coverage, ruff clean.
+### v0.1 (tagged v0.1.0)
+- Repo skeleton, package, libvirt_conn, eventlog, safety
+- `vm.pause` and `vm.kill` faults
+- CLI: `--version`, `list-vms`, `list-faults`, `inject`
+- 42 tests, 93% coverage, ruff clean
 
-| Task | Status |
-|---|---|
-| 1 — Repo skeleton (pyproject, git, docs) | ✅ done |
-| 2 — Package skeleton + `__version__` | ✅ done |
-| 3 — `libvirt_conn.py` | ✅ done |
-| 4 — `eventlog.py` | ✅ done |
-| 5 — `safety.py` | ✅ done |
-| 6 — Fault Protocol (`faults/base.py`) | ✅ done |
-| 7 — `vm.pause` fault + conftest | ✅ done |
-| 8 — `vm.kill` fault + registry wiring | ✅ done |
-| 9 — CLI: `--version`, `list-vms`, `list-faults` | ✅ done |
-| 10 — CLI: `inject` command | ✅ done |
-| 11 — Quality gates (pytest 93%, ruff clean) | ✅ done |
-| 12 — Manual smoke tests on real libvirt host | ⏳ user's turn |
-
-## What's next: Task 12 (user runs these)
-
-```bash
-# Confirm libvirt access
-virsh -c qemu:///system list --all
-
-# Basics
-uv run kvmchaos --version
-uv run kvmchaos list-vms
-uv run kvmchaos list-faults
-
-# Pause smoke (reversible)
-uv run kvmchaos inject vm.pause <vm-name>
-cat ~/.local/state/kvmchaos/events.log
-
-# Kill smoke (destructive — throwaway VM only)
-uv run kvmchaos inject vm.kill <vm-name> --yes
-cat ~/.local/state/kvmchaos/events.log
-
-# Negative cases
-uv run kvmchaos inject bogus <vm-name>      # expect exit 2
-uv run kvmchaos inject vm.pause no-such-vm  # expect exit 2
-```
-
-After smokes pass: flip checkboxes in `PLAN.md`, then `git tag v0.1.0`.
+### v0.2 (tagged v0.2.0)
+- `vm.freeze` — CPU scheduler throttle via `schedulerParameters()` / `setSchedulerParameters()`
+- `vm.starve` — balloon memory squeeze via `setMemory()` / `memoryStats()`
+- `--dry-run / -n` flag on `inject` — full validation, no mutation, no log writes
+- 70 tests total, 94% coverage, ruff clean
 
 ## Repo state
 
-- Git: `main` branch, 13 commits
+- Git: `main` branch, 20 commits
 - Working tree: clean
-- `src/kvmchaos/` — all modules implemented
-- `tests/` — 42 tests, 93% coverage
+- Latest tag: `v0.2.0` at `28f1345`
 
 ## Key files
 
-- Spec: `docs/superpowers/specs/2026-04-20-kvmchaos-v0.1-design.md`
-- Plan: `docs/superpowers/plans/2026-04-20-kvmchaos-v0.1.md`
-- Plan: `docs/superpowers/plans/2026-04-20-kvmchaos-v0.1.md`
+| File | Purpose |
+|---|---|
+| `src/kvmchaos/faults/vm_freeze.py` | CPU throttle fault |
+| `src/kvmchaos/faults/vm_starve.py` | Memory balloon fault |
+| `src/kvmchaos/cli.py` | inject_cmd + _run_step with --dry-run |
+| `tests/test_faults_vm_freeze.py` | 10 tests, all mock-based |
+| `tests/test_faults_vm_starve.py` | 11 tests, all mock-based |
+| `tests/test_cli_dry_run.py` | 7 CLI integration tests |
+
+## Important implementation notes
+
+- `vm.freeze` uses `domain.schedulerParameters()` / `domain.setSchedulerParameters()` — NOT `getCpuSchedulerParameters` (which doesn't exist in libvirt-python)
+- `vm.starve` reads `maxMemory()` fresh at each step — no instance state needed
+- Both faults use `MagicMock(spec=libvirt.virDomain)` for all tests — `test:///default` doesn't support QEMU-specific scheduler or balloon APIs
+- `vm.freeze` revert hardcodes `cpu_shares=1024` (QEMU/KVM default) — pre-inject value is not preserved
+
+## What's next
+
+Backlog (from PLAN.md):
+- `net.latency` via `tc` (introduces subprocess + privilege)
+- `disk.latency` via `dm-delay`
+- `migration.abort`
+- Structured JSON-per-run records
+- HTML report generator
+- Remote libvirt (`qemu+ssh://...`)
