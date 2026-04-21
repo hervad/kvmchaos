@@ -16,10 +16,9 @@ class TestDryRunHappyPath:
 
     def test_dry_run_prints_all_three_steps(self):
         result = runner.invoke(app, [*_CONNECT, "inject", "--dry-run", "--yes", "vm.pause", "test"])
-        assert "[dry-run]" in result.stdout
-        assert "inject" in result.stdout
-        assert "verify" in result.stdout
-        assert "revert" in result.stdout
+        assert "[dry-run] would: inject" in result.stdout
+        assert "[dry-run] would: verify" in result.stdout
+        assert "[dry-run] would: revert" in result.stdout
 
     def test_dry_run_short_flag(self):
         result = runner.invoke(app, [*_CONNECT, "inject", "-n", "--yes", "vm.pause", "test"])
@@ -29,7 +28,7 @@ class TestDryRunHappyPath:
     def test_dry_run_with_vm_kill(self):
         result = runner.invoke(app, [*_CONNECT, "inject", "--dry-run", "--yes", "vm.kill", "test"])
         assert result.exit_code == 0
-        assert "[dry-run]" in result.stdout
+        assert "[dry-run] would: inject vm.kill on test" in result.stdout
 
 
 class TestDryRunValidation:
