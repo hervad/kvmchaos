@@ -18,6 +18,15 @@ See `docs/superpowers/specs/2026-04-20-kvmchaos-v0.1-design.md` for the spec.
 - [x] `pytest` passes with coverage ≥85%
 - [x] `ruff check`, `ruff format --check` clean
 
+## Acceptance (v0.2)
+
+- [x] `vm.freeze` inject/verify/revert cycle logged correctly
+- [x] `vm.starve` inject/verify/revert cycle logged correctly
+- [x] `--dry-run` prints plan, makes no libvirt mutations, writes no log entries
+- [x] `--dry-run` with unknown fault/VM exits 2 with same error message as real run
+- [x] `pytest` passes with coverage ≥85%
+- [x] `ruff check`, `ruff format --check` clean
+
 ## Backlog (post-v0.1, not scheduled)
 
 - `net.latency` via `tc` (introduces subprocess + privilege)
