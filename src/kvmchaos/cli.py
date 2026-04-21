@@ -110,6 +110,9 @@ def inject_cmd(
     fault_name: str = typer.Argument(..., metavar="FAULT", help="Fault name. See `list-faults`."),
     vm: str = typer.Argument(..., metavar="VM", help="Target VM name."),
     assume_yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Print plan without making changes."
+    ),
 ) -> None:
     """Inject a fault into a VM, verify it took effect, then revert.
 
@@ -120,6 +123,7 @@ def inject_cmd(
         fault_name: Name of the fault to inject (see ``list-faults``).
         vm: Name of the target libvirt domain.
         assume_yes: If True, skip the confirmation prompt.
+        dry_run: If True, validate args and print plan without touching libvirt state.
     """
     configure_logging()
 
@@ -145,13 +149,15 @@ def inject_cmd(
             typer.echo("Aborted.")
             raise typer.Exit(code=1)
 
-        _run_step(fault.inject, domain, action="inject", fault_name=fault_name, vm=vm)
+        _run_step(
+            fault.inject, domain, action="inject", fault_name=fault_name, vm=vm, dry_run=dry_run
+        )
 
         try:
-            _run_step(fault.verify, domain, action="verify", fault_name=fault_name, vm=vm)
+            _run_step(
+                fault.verify, domain, action="verify", fault_name=fault_name, vm=vm, dry_run=dry_run
+            )
         except Exception:
-            # Verify failed — attempt revert to avoid leaving the VM broken,
-            # but don't let a revert failure mask the verify failure.
             _run_step(
                 fault.revert,
                 domain,
@@ -159,10 +165,13 @@ def inject_cmd(
                 fault_name=fault_name,
                 vm=vm,
                 swallow=True,
+                dry_run=dry_run,
             )
             raise typer.Exit(code=1) from None
 
-        _run_step(fault.revert, domain, action="revert", fault_name=fault_name, vm=vm)
+        _run_step(
+            fault.revert, domain, action="revert", fault_name=fault_name, vm=vm, dry_run=dry_run
+        )
 
 
 def _run_step(
@@ -173,6 +182,7 @@ def _run_step(
     fault_name: str,
     vm: str,
     swallow: bool = False,
+    dry_run: bool = False,
 ) -> None:
     """Execute one fault step (inject, verify, or revert) and log the outcome.
 
@@ -183,7 +193,11 @@ def _run_step(
         fault_name: Fault registry key, included in the log event.
         vm: VM name, included in the log event.
         swallow: If True, log the error and return instead of re-raising.
+        dry_run: If True, print a plan line and return without calling func or logging.
     """
+    if dry_run:
+        typer.echo(f"[dry-run] would: {action} {fault_name} on {vm}")
+        return
     t0 = time.monotonic()
     try:
         func(domain)

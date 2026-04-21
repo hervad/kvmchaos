@@ -1,0 +1,52 @@
+"""CLI tests for the --dry-run flag on the inject command."""
+
+from typer.testing import CliRunner
+
+from kvmchaos.cli import app
+
+runner = CliRunner()
+
+_CONNECT = ["--connect", "test:///default"]
+
+
+class TestDryRunHappyPath:
+    def test_dry_run_exits_zero(self):
+        result = runner.invoke(app, [*_CONNECT, "inject", "--dry-run", "--yes", "vm.pause", "test"])
+        assert result.exit_code == 0
+
+    def test_dry_run_prints_all_three_steps(self):
+        result = runner.invoke(app, [*_CONNECT, "inject", "--dry-run", "--yes", "vm.pause", "test"])
+        assert "[dry-run]" in result.stdout
+        assert "inject" in result.stdout
+        assert "verify" in result.stdout
+        assert "revert" in result.stdout
+
+    def test_dry_run_short_flag(self):
+        result = runner.invoke(app, [*_CONNECT, "inject", "-n", "--yes", "vm.pause", "test"])
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.stdout
+
+    def test_dry_run_with_vm_kill(self):
+        result = runner.invoke(app, [*_CONNECT, "inject", "--dry-run", "--yes", "vm.kill", "test"])
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.stdout
+
+
+class TestDryRunValidation:
+    def test_dry_run_unknown_fault_exits_2(self):
+        result = runner.invoke(app, [*_CONNECT, "inject", "--dry-run", "--yes", "bogus", "test"])
+        assert result.exit_code == 2
+
+    def test_dry_run_unknown_vm_exits_2(self):
+        result = runner.invoke(
+            app, [*_CONNECT, "inject", "--dry-run", "--yes", "vm.pause", "no-such-vm"]
+        )
+        assert result.exit_code == 2
+
+    def test_dry_run_aborted_by_user_exits_1(self):
+        result = runner.invoke(
+            app,
+            [*_CONNECT, "inject", "--dry-run", "vm.pause", "test"],
+            input="n\n",
+        )
+        assert result.exit_code == 1
