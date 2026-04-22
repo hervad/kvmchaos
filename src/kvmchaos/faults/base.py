@@ -31,6 +31,9 @@ class Fault(Protocol):
     destructive: ClassVar[bool]
     """True if the fault kills or otherwise disrupts running guest state."""
 
+    local_only: ClassVar[bool]
+    """True if the fault requires local execution (subprocess on the KVM host)."""
+
     def inject(self, domain: libvirt.virDomain) -> None:
         """Apply the fault to the domain.
 

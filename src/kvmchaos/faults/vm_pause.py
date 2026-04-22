@@ -22,6 +22,7 @@ class VmPauseFault:
     name: ClassVar[str] = "vm.pause"
     description: ClassVar[str] = "Suspend vCPUs; RAM preserved. Guest clock drifts."
     destructive: ClassVar[bool] = False
+    local_only: ClassVar[bool] = False
 
     def inject(self, domain: libvirt.virDomain) -> None:
         """Suspend the domain's vCPUs.

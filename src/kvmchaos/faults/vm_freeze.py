@@ -28,6 +28,7 @@ class VmFreezeFault:
     name: ClassVar[str] = "vm.freeze"
     description: ClassVar[str] = "Hard-cap vCPU quota to 5%; guest crawls regardless of host load."
     destructive: ClassVar[bool] = False
+    local_only: ClassVar[bool] = False
 
     def inject(self, domain: libvirt.virDomain) -> None:
         """Set vcpu_quota to 5% of one vCPU period.

@@ -30,6 +30,7 @@ class NetLatencyFault:
     name: ClassVar[str] = "net.latency"
     description: ClassVar[str] = f"Add {_DELAY_MS}ms one-way latency to first vNIC via tc netem."
     destructive: ClassVar[bool] = False
+    local_only: ClassVar[bool] = True
 
     def inject(self, domain: libvirt.virDomain) -> None:
         """Apply netem delay to the domain's first tap device.
