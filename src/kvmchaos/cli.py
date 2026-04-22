@@ -27,8 +27,14 @@ from kvmchaos.faults import FAULTS
 from kvmchaos.faults.disk_latency import DiskLatencyFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
 from kvmchaos.report import generate as generate_report
-from kvmchaos.report import load_records
-from kvmchaos.runrecord import default_runs_dir, load_record, resolve_id, write_run_record
+from kvmchaos.report import load_records, render_html
+from kvmchaos.runrecord import (
+    default_runs_dir,
+    filter_records,
+    load_record,
+    resolve_id,
+    write_run_record,
+)
 from kvmchaos.safety import confirm
 
 app = typer.Typer(
@@ -113,16 +119,67 @@ def report_cmd(
         "--runs-dir",
         help="Directory of run records. Defaults to $XDG_STATE_HOME/kvmchaos/runs.",
     ),
+    since: str | None = typer.Option(
+        None,
+        "--since",
+        help="Keep runs with started_at ≥ this ISO date or datetime (assumes UTC if naive).",
+    ),
+    fault: str | None = typer.Option(None, "--fault", help="Only the named fault."),
+    outcome: str | None = typer.Option(
+        None, "--outcome", help="Only this outcome (success, fail, dry_run)."
+    ),
+    vm: str | None = typer.Option(None, "--vm", help="Only this VM name."),
 ) -> None:
-    """Render a static HTML report of all run records.
+    """Render a static HTML report of run records, optionally filtered.
 
     Args:
         output: Destination HTML file. Parent directories are created as needed.
         runs_dir: Runs directory. If omitted, ``default_runs_dir()`` is used.
+        since: Optional lower bound on ``started_at``.
+        fault: Optional exact fault name filter.
+        outcome: Optional outcome filter (``success``/``fail``/``dry_run``).
+        vm: Optional exact VM name filter.
     """
     target_runs = runs_dir if runs_dir is not None else default_runs_dir()
-    written = generate_report(output, target_runs)
-    typer.echo(f"Report: {written}")
+    records = load_records(target_runs)
+    records = filter_records(
+        records, since=_parse_since(since), fault=fault, outcome=outcome, vm=vm
+    )
+    if since is None and fault is None and outcome is None and vm is None:
+        # Preserve the prior no-filter fast-path so the generate() helper
+        # covers its empty-file write and other edge cases.
+        written = generate_report(output, target_runs)
+        typer.echo(f"Report: {written}")
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(render_html(records))
+    typer.echo(f"Report: {output}")
+
+
+def _parse_since(raw: str | None) -> datetime | None:
+    """Parse a user-supplied ``--since`` argument into a UTC-aware datetime.
+
+    Accepts any :func:`datetime.fromisoformat`-parseable string. A naive
+    result (date-only or no timezone) is interpreted as UTC.
+
+    Args:
+        raw: Raw CLI argument, or ``None`` to disable the filter.
+
+    Returns:
+        Timezone-aware UTC datetime, or ``None`` when ``raw`` is ``None``.
+
+    Raises:
+        typer.BadParameter: If the string is not ISO 8601.
+    """
+    if raw is None:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise typer.BadParameter(f"--since must be ISO 8601 (got {raw!r})") from exc
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
 
 
 runs_app = typer.Typer(
@@ -141,15 +198,35 @@ def runs_list_cmd(
         "--runs-dir",
         help="Directory of run records. Defaults to $XDG_STATE_HOME/kvmchaos/runs.",
     ),
+    since: str | None = typer.Option(
+        None,
+        "--since",
+        help="Keep runs with started_at ≥ this ISO date or datetime (assumes UTC if naive).",
+    ),
+    fault: str | None = typer.Option(None, "--fault", help="Only the named fault."),
+    outcome: str | None = typer.Option(
+        None, "--outcome", help="Only this outcome (success, fail, dry_run)."
+    ),
+    vm: str | None = typer.Option(None, "--vm", help="Only this VM name."),
 ) -> None:
-    """List recent run records, newest first.
+    """List recent run records, newest first, with optional filters.
+
+    Filters apply before ``--limit`` so the flag caps post-filter rows.
 
     Args:
-        limit: Maximum number of rows to display.
+        limit: Maximum number of rows to display (after filtering).
         runs_dir: Runs directory. If omitted, ``default_runs_dir()`` is used.
+        since: Optional lower bound on ``started_at``.
+        fault: Optional exact fault name filter.
+        outcome: Optional outcome filter.
+        vm: Optional exact VM name filter.
     """
     target = runs_dir if runs_dir is not None else default_runs_dir()
-    records = load_records(target)[:limit]
+    records = load_records(target)
+    records = filter_records(
+        records, since=_parse_since(since), fault=fault, outcome=outcome, vm=vm
+    )
+    records = records[:limit]
     if not records:
         typer.echo("No runs.")
         return

@@ -177,3 +177,125 @@ class TestRunsShowCommand:
         )
         result = runner.invoke(app, ["runs", "show", "nope", "--runs-dir", str(tmp_path)])
         assert result.exit_code == 2
+
+
+class TestRunsListFilters:
+    def test_fault_filter(self, tmp_path: Path) -> None:
+        _write(tmp_path, "20260422T100000Z-vm-pause-server1", _sample("2026-04-22T10:00:00+00:00"))
+        _write(
+            tmp_path,
+            "20260422T110000Z-disk-latency-server1",
+            _sample("2026-04-22T11:00:00+00:00", "disk.latency"),
+        )
+        result = runner.invoke(
+            app,
+            ["runs", "list", "--runs-dir", str(tmp_path), "--fault", "disk.latency"],
+        )
+        assert result.exit_code == 0
+        assert "disk.latency" in result.stdout
+        assert "vm.pause" not in result.stdout
+
+    def test_outcome_filter(self, tmp_path: Path) -> None:
+        ok = _sample("2026-04-22T10:00:00+00:00")
+        bad = _sample("2026-04-22T11:00:00+00:00")
+        bad["outcome"] = "fail"
+        _write(tmp_path, "20260422T100000Z-vm-pause-server1", ok)
+        _write(tmp_path, "20260422T110000Z-vm-pause-server1", bad)
+        result = runner.invoke(
+            app, ["runs", "list", "--runs-dir", str(tmp_path), "--outcome", "fail"]
+        )
+        assert result.exit_code == 0
+        body_lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+        # Header + exactly one data row.
+        assert len(body_lines) == 2
+
+    def test_vm_filter(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "20260422T100000Z-vm-pause-server1",
+            _sample("2026-04-22T10:00:00+00:00", vm="server1"),
+        )
+        _write(
+            tmp_path,
+            "20260422T110000Z-vm-pause-server2",
+            _sample("2026-04-22T11:00:00+00:00", vm="server2"),
+        )
+        result = runner.invoke(
+            app, ["runs", "list", "--runs-dir", str(tmp_path), "--vm", "server2"]
+        )
+        assert result.exit_code == 0
+        assert "server2" in result.stdout
+        # server1 row absent.
+        body_lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+        assert len(body_lines) == 2
+
+    def test_since_filter_date_only(self, tmp_path: Path) -> None:
+        _write(tmp_path, "20260421T120000Z-vm-pause-s", _sample("2026-04-21T12:00:00+00:00"))
+        _write(tmp_path, "20260423T120000Z-vm-pause-s", _sample("2026-04-23T12:00:00+00:00"))
+        result = runner.invoke(
+            app, ["runs", "list", "--runs-dir", str(tmp_path), "--since", "2026-04-22"]
+        )
+        assert result.exit_code == 0
+        assert "2026-04-23" in result.stdout
+        assert "2026-04-21" not in result.stdout
+
+    def test_filters_yielding_no_rows(self, tmp_path: Path) -> None:
+        _write(tmp_path, "20260422T100000Z-vm-pause-s", _sample("2026-04-22T10:00:00+00:00"))
+        result = runner.invoke(
+            app, ["runs", "list", "--runs-dir", str(tmp_path), "--fault", "vm.kill"]
+        )
+        assert result.exit_code == 0
+        assert "No runs." in result.stdout
+
+    def test_bad_since_exits_nonzero(self, tmp_path: Path) -> None:
+        _write(tmp_path, "20260422T100000Z-vm-pause-s", _sample("2026-04-22T10:00:00+00:00"))
+        result = runner.invoke(
+            app,
+            ["runs", "list", "--runs-dir", str(tmp_path), "--since", "not-a-date"],
+        )
+        assert result.exit_code != 0
+
+
+class TestReportFilters:
+    def test_fault_filter(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        _write(runs, "20260422T100000Z-vm-pause-s", _sample("2026-04-22T10:00:00+00:00"))
+        _write(
+            runs,
+            "20260422T110000Z-disk-latency-s",
+            _sample("2026-04-22T11:00:00+00:00", "disk.latency"),
+        )
+        out = tmp_path / "r.html"
+        result = runner.invoke(
+            app,
+            [
+                "report",
+                "--output",
+                str(out),
+                "--runs-dir",
+                str(runs),
+                "--fault",
+                "disk.latency",
+            ],
+        )
+        assert result.exit_code == 0
+        body = out.read_text()
+        assert "disk.latency" in body
+        assert "vm.pause" not in body
+
+    def test_outcome_filter(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        ok = _sample("2026-04-22T10:00:00+00:00")
+        bad = _sample("2026-04-22T11:00:00+00:00")
+        bad["outcome"] = "fail"
+        _write(runs, "20260422T100000Z-vm-pause-s", ok)
+        _write(runs, "20260422T110000Z-vm-pause-s", bad)
+        out = tmp_path / "r.html"
+        result = runner.invoke(
+            app,
+            ["report", "--output", str(out), "--runs-dir", str(runs), "--outcome", "fail"],
+        )
+        assert result.exit_code == 0
+        body = out.read_text()
+        assert "fail: 1" in body
+        assert "success" not in body or "success: " not in body

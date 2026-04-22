@@ -12,6 +12,14 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
+__all__ = [
+    "default_runs_dir",
+    "filter_records",
+    "load_record",
+    "resolve_id",
+    "write_run_record",
+]
+
 
 def default_runs_dir() -> Path:
     """Return the XDG-compliant default directory for per-run JSON records.
@@ -22,6 +30,55 @@ def default_runs_dir() -> Path:
     """
     base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
     return Path(base) / "kvmchaos" / "runs"
+
+
+def filter_records(
+    records: list[dict[str, object]],
+    *,
+    since: datetime | None = None,
+    fault: str | None = None,
+    outcome: str | None = None,
+    vm: str | None = None,
+) -> list[dict[str, object]]:
+    """Return records matching every non-None filter.
+
+    Filters compose via AND. A record is kept only if it passes every
+    non-None condition.
+
+    Args:
+        records: Run records to filter.
+        since: Drop records whose ``started_at`` is before this datetime
+            (inclusive). Records missing ``started_at`` are dropped. A
+            non-ISO ``started_at`` raises ``ValueError`` (fail-fast, the
+            record writer never produces one so the input is corrupt).
+        fault: Exact match on the ``fault`` field.
+        outcome: Exact match on the ``outcome`` field.
+        vm: Exact match on the ``vm`` field.
+
+    Returns:
+        A new list containing only matching records; original order preserved.
+
+    Raises:
+        ValueError: If ``since`` is set and a record's ``started_at`` is
+            present but cannot be parsed as ISO 8601.
+    """
+    kept: list[dict[str, object]] = []
+    for rec in records:
+        if fault is not None and rec.get("fault") != fault:
+            continue
+        if outcome is not None and rec.get("outcome") != outcome:
+            continue
+        if vm is not None and rec.get("vm") != vm:
+            continue
+        if since is not None:
+            raw = rec.get("started_at")
+            if raw is None:
+                continue
+            ts = datetime.fromisoformat(str(raw))
+            if ts < since:
+                continue
+        kept.append(rec)
+    return kept
 
 
 def load_record(path: Path) -> dict[str, object]:

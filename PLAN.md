@@ -102,9 +102,21 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 - [x] `pytest` passes with coverage ≥85%
 - [x] `ruff check`, `ruff format --check` clean
 
-## Backlog (post-v0.6, not scheduled)
+## Acceptance (v0.7)
 
-- Report filtering: `--since`, `--fault`, `--outcome`, `--vm` on `kvmchaos report`
+- [x] `--since ISO`, `--fault NAME`, `--outcome NAME`, `--vm NAME` accepted
+      on both `kvmchaos report` and `kvmchaos runs list`
+- [x] `--since` accepts both date-only (`2026-04-22`) and full datetime
+      (`2026-04-22T12:00:00+00:00`); naive values are treated as UTC
+- [x] Filters compose (AND); an empty result renders "No runs." or a
+      valid empty-state HTML page, exit 0
+- [x] Invalid `--since` value exits non-zero with a helpful message
+- [x] `--limit` is applied AFTER filtering on `runs list`
+- [x] `pytest` passes with coverage ≥85%
+- [x] `ruff check`, `ruff format --check` clean
+
+## Backlog (post-v0.7, not scheduled)
+
 - Second filesystem-layer fault (e.g. `disk.fill` or `disk.corrupt`)
 - `migration.abort` — deferred; requires a second KVM host (or a nested-KVM
   lab setup) to produce an in-flight migration to cancel. Revisit when the
