@@ -148,13 +148,13 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 
 ## Acceptance (v0.11)
 
-- [ ] `net.partition` registered in `list-faults` with `local_only = True`
-- [ ] `kvmchaos inject net.partition <vm> --yes` drops all traffic on first vNIC via nftables
-- [ ] Revert deletes the `inet kvmchaos-<dev>` table; idempotent if already absent
-- [ ] Does not modify firewalld rules
-- [ ] `pytest` passes with coverage >=85%
-- [ ] `ruff check`, `ruff format --check` clean
-- [ ] Lab validation on Fedora 43 KVM host
+- [x] `net.partition` registered in `list-faults` with `local_only = True`
+- [x] `kvmchaos inject net.partition <vm> --yes` drops all traffic on first vNIC via tc netem 100% loss
+- [x] Revert removes root qdisc, restoring normal forwarding
+- [x] Works with bridged VMs (no br_netfilter required)
+- [x] `pytest` passes with coverage >=85%
+- [x] `ruff check`, `ruff format --check` clean
+- [x] Lab validation on Fedora 43 KVM host (2026-04-23) — seq 9-23 "Destination Host Unreachable", restored at seq 24
 
 ## Backlog (post-v0.11, not scheduled)
 
