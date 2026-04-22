@@ -12,6 +12,7 @@ fault logic lives in `kvmchaos.faults`.
 from __future__ import annotations
 
 import time
+import urllib.parse
 from collections.abc import Callable
 
 import libvirt
@@ -20,7 +21,7 @@ import typer
 from kvmchaos import __version__
 from kvmchaos.eventlog import configure_logging, log_event
 from kvmchaos.faults import FAULTS
-from kvmchaos.libvirt_conn import connect
+from kvmchaos.libvirt_conn import connect, resolve_uri
 from kvmchaos.safety import confirm
 
 app = typer.Typer(
@@ -104,6 +105,22 @@ _STATE_NAMES: dict[int, str] = {
 }
 
 
+def _is_remote(uri: str) -> bool:
+    """Return True if the URI refers to a non-local libvirt host.
+
+    A URI with an empty hostname (e.g. ``qemu:///system``) is a local Unix
+    socket. ``localhost``, ``127.0.0.1``, and ``::1`` are also treated as local.
+
+    Args:
+        uri: Resolved libvirt connection URI.
+
+    Returns:
+        True if the hostname is non-empty and not a localhost alias.
+    """
+    host = urllib.parse.urlparse(uri).hostname or ""
+    return host not in ("", "localhost", "127.0.0.1", "::1")
+
+
 @app.command("inject")
 def inject_cmd(
     ctx: typer.Context,
@@ -139,8 +156,17 @@ def inject_cmd(
         raise typer.Exit(code=2)
     fault = FAULTS[fault_name]
 
-    uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
-    with connect(uri) as conn:
+    raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
+    resolved_uri = resolve_uri(raw_uri)
+
+    if fault.local_only and _is_remote(resolved_uri):
+        typer.echo(
+            f"{fault_name} requires local execution — run kvmchaos directly on the KVM host.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    with connect(resolved_uri) as conn:
         try:
             domain = conn.lookupByName(vm)
         except libvirt.libvirtError as exc:
