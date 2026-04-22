@@ -1,11 +1,10 @@
-"""`net.partition` fault — fully sever a VM's network via nftables.
+"""`net.partition` fault — fully sever a VM's network via tc netem 100% loss.
 
-Creates a dedicated nftables table that drops all forwarded traffic on the
-VM's host-side tap device. The guest loses all network connectivity for the
-duration of the fault. Reverts by deleting the table.
+Uses ``tc netem loss 100%`` on the host-side tap device. This works for
+bridge-attached VMs where nftables forward hooks are bypassed by the kernel
+bridge layer (``br_netfilter`` not required).
 
-Requires root or CAP_NET_ADMIN on the host. Uses a dedicated
-``inet kvmchaos-<dev>`` table so it does not interfere with firewalld.
+Requires root or CAP_NET_ADMIN on the host.
 """
 
 from __future__ import annotations
@@ -15,59 +14,64 @@ from typing import ClassVar
 
 import libvirt
 
-import kvmchaos.nft as nft
+import kvmchaos.tc as tc
 
 
 class NetPartitionFault:
-    """Sever a VM's network by dropping all tap device traffic via nftables.
+    """Sever a VM's network by setting 100% packet loss via tc netem.
 
     Implements the ``Fault`` protocol — stateless, operates on a provided
     ``virDomain`` handle.
     """
 
     name: ClassVar[str] = "net.partition"
-    description: ClassVar[str] = "Drop all traffic on first vNIC via nftables (full blackhole)."
+    description: ClassVar[str] = "Drop all traffic on first vNIC via tc netem 100% loss."
     destructive: ClassVar[bool] = False
     local_only: ClassVar[bool] = True
 
     def inject(self, domain: libvirt.virDomain) -> None:
-        """Create nftables rules that drop all traffic on the tap device.
+        """Set 100% packet loss on the domain's first tap device.
 
         Args:
             domain: A live libvirt domain handle.
 
         Raises:
             RuntimeError: If no network interface is found in the domain XML.
-            RuntimeError: If the nft command fails (e.g. permission denied).
+            RuntimeError: If the tc command fails (e.g. permission denied).
         """
-        nft.add_partition(_tap_device(domain))
+        tc.add_netem_loss(_tap_device(domain), 100)
 
     def verify(self, domain: libvirt.virDomain) -> None:
-        """Assert that the partition table is active on the tap device.
+        """Assert that netem 100% loss is active on the tap device.
 
         Args:
             domain: A live libvirt domain handle.
 
         Raises:
-            RuntimeError: If the nftables partition table is not present.
+            RuntimeError: If netem or loss is not present in tc qdisc output.
         """
         dev = _tap_device(domain)
-        if not nft.partition_active(dev):
+        output = tc.show_qdisc(dev)
+        if "netem" not in output:
+            raise RuntimeError(
+                f"net.partition not in effect on '{dev}' for domain '{domain.name()}'"
+            )
+        if "loss" not in output:
             raise RuntimeError(
                 f"net.partition not in effect on '{dev}' for domain '{domain.name()}'"
             )
 
     def revert(self, domain: libvirt.virDomain) -> None:
-        """Delete the nftables partition table, restoring normal forwarding.
+        """Remove the root qdisc from the tap device, restoring normal forwarding.
 
         Args:
             domain: A live libvirt domain handle.
 
         Raises:
             RuntimeError: If no network interface is found in the domain XML.
-            RuntimeError: If the nft command fails.
+            RuntimeError: If the tc command fails.
         """
-        nft.del_partition(_tap_device(domain))
+        tc.del_root_qdisc(_tap_device(domain))
 
 
 def _tap_device(domain: libvirt.virDomain) -> str:

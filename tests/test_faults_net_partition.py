@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import libvirt
 import pytest
 
-import kvmchaos.nft as nft
+import kvmchaos.tc as tc
 from kvmchaos.faults.net_partition import NetPartitionFault
 
 _XML = """
@@ -45,28 +45,38 @@ class TestNetPartitionMetadata:
 
 
 class TestNetPartitionHappyPath:
-    def test_inject_calls_add_partition(self):
+    def test_inject_sets_100_percent_loss(self):
         domain = _mock_domain()
-        with patch.object(nft, "add_partition") as mock_add:
+        with patch.object(tc, "add_netem_loss") as mock_add:
             NetPartitionFault().inject(domain)
-        mock_add.assert_called_once_with("vnet0")
+        mock_add.assert_called_once_with("vnet0", 100)
 
-    def test_verify_passes_when_table_exists(self):
+    def test_verify_passes_when_netem_loss_present(self):
         domain = _mock_domain()
-        with patch.object(nft, "partition_active", return_value=True):
+        with patch.object(
+            tc, "show_qdisc", return_value="qdisc netem 8001: root refcnt 2 loss 100%"
+        ):
             NetPartitionFault().verify(domain)  # must not raise
 
-    def test_verify_raises_when_table_absent(self):
+    def test_verify_raises_when_netem_absent(self):
         domain = _mock_domain()
         with (
-            patch.object(nft, "partition_active", return_value=False),
+            patch.object(tc, "show_qdisc", return_value="qdisc pfifo_fast 0: root"),
             pytest.raises(RuntimeError, match=r"net\.partition not in effect"),
         ):
             NetPartitionFault().verify(domain)
 
-    def test_revert_calls_del_partition(self):
+    def test_verify_raises_when_loss_absent(self):
         domain = _mock_domain()
-        with patch.object(nft, "del_partition") as mock_del:
+        with (
+            patch.object(tc, "show_qdisc", return_value="qdisc netem 8001: root delay 200ms"),
+            pytest.raises(RuntimeError, match=r"net\.partition not in effect"),
+        ):
+            NetPartitionFault().verify(domain)
+
+    def test_revert_calls_del_root_qdisc(self):
+        domain = _mock_domain()
+        with patch.object(tc, "del_root_qdisc") as mock_del:
             NetPartitionFault().revert(domain)
         mock_del.assert_called_once_with("vnet0")
 
@@ -75,7 +85,7 @@ class TestNetPartitionErrorPaths:
     def test_inject_raises_when_no_interface(self):
         domain = _mock_domain(_XML_NO_IFACE)
         with (
-            patch.object(nft, "add_partition"),
+            patch.object(tc, "add_netem_loss"),
             pytest.raises(RuntimeError, match="no network interface"),
         ):
             NetPartitionFault().inject(domain)
@@ -83,46 +93,7 @@ class TestNetPartitionErrorPaths:
     def test_revert_raises_when_no_interface(self):
         domain = _mock_domain(_XML_NO_IFACE)
         with (
-            patch.object(nft, "del_partition"),
+            patch.object(tc, "del_root_qdisc"),
             pytest.raises(RuntimeError, match="no network interface"),
         ):
             NetPartitionFault().revert(domain)
-
-
-class TestNftModule:
-    def test_add_partition_creates_table_and_rules(self):
-        with patch("kvmchaos.nft.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
-            nft.add_partition("vnet0")
-        # Single _run_script call via nft -f -
-        mock_run.assert_called_once()
-        script = mock_run.call_args.kwargs["input"]
-        assert "iifname" in script and "drop" in script
-        assert "oifname" in script and "drop" in script
-        assert "hook forward" in script
-
-    def test_del_partition_deletes_table(self):
-        with patch("kvmchaos.nft.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
-            nft.del_partition("vnet0")
-        cmd = mock_run.call_args[0][0]
-        assert "delete" in cmd
-        assert "table" in cmd
-
-    def test_partition_active_returns_true_when_table_exists(self):
-        with patch("kvmchaos.nft.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="table inet kvmchaos-vnet0")
-            result = nft.partition_active("vnet0")
-        assert result is True
-
-    def test_partition_active_returns_false_when_table_absent(self):
-        with patch("kvmchaos.nft.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stdout="")
-            result = nft.partition_active("vnet0")
-        assert result is False
-
-    def test_add_partition_raises_on_nft_failure(self):
-        with patch("kvmchaos.nft.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stderr="Operation not permitted")
-            with pytest.raises(RuntimeError, match="nft script failed"):
-                nft.add_partition("vnet0")
