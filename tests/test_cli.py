@@ -309,3 +309,43 @@ class TestReport:
         body = out.read_text()
         assert "vm.pause" in body
         assert "server1" in body
+
+
+class TestDiskFillCli:
+    def test_disk_fill_appears_in_list_faults(self) -> None:
+        result = runner.invoke(app, ["list-faults"])
+        assert result.exit_code == 0
+        assert "disk.fill" in result.stdout
+
+    def test_size_flag_accepted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from kvmchaos.faults.disk_fill import DiskFillFault
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+            return {"action": action, "result": "skipped", "duration_ms": 0}
+
+        with (
+            patch("kvmchaos.cli._run_step", side_effect=capturing_run_step),
+            patch("kvmchaos.cli.FAULTS", {"disk.fill": DiskFillFault()}),
+            patch("kvmchaos.cli.connect") as mock_conn,
+        ):
+            mock_domain = MagicMock()
+            mock_conn.return_value.__enter__.return_value.lookupByName.return_value = mock_domain
+            result = runner.invoke(
+                app,
+                [
+                    "--connect",
+                    "test:///default",
+                    "inject",
+                    "--yes",
+                    "--dry-run",
+                    "--size",
+                    "512",
+                    "disk.fill",
+                    "test",
+                ],
+            )
+        assert result.exit_code == 0

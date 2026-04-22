@@ -115,9 +115,19 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 - [x] `pytest` passes with coverage ≥85%
 - [x] `ruff check`, `ruff format --check` clean
 
-## Backlog (post-v0.7, not scheduled)
+## Acceptance (v0.8)
 
-- Second filesystem-layer fault (e.g. `disk.fill` or `disk.corrupt`)
+- [ ] `disk.fill` registered in `list-faults` with `local_only = True`
+- [ ] `kvmchaos inject disk.fill <vm> --size N` creates a fill file of N MiB next to the VM image
+- [ ] Fill file placed at `<image-dir>/.kvmchaos-fill-<vm>` on the host filesystem
+- [ ] Revert deletes the fill file; revert is idempotent (no error if already gone)
+- [ ] `pytest` passes with coverage ≥85%
+- [ ] `ruff check`, `ruff format --check` clean
+- [ ] Lab validation on Fedora 43 KVM host
+
+## Backlog (post-v0.8, not scheduled)
+
+- `disk.corrupt` — targeted block-level corruption (high risk, needs design)
 - `migration.abort` — deferred; requires a second KVM host (or a nested-KVM
   lab setup) to produce an in-flight migration to cancel. Revisit when the
   lab grows beyond a single hypervisor.
