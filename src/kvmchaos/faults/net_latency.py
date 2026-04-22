@@ -1,4 +1,4 @@
-"""`net.latency` fault — inject RTT latency on a VM's first virtual NIC.
+"""`net.latency` fault — inject one-way latency on a VM's first virtual NIC.
 
 Uses ``tc netem`` on the host-side tap device to add a fixed one-way delay.
 The tap device name is read from the domain XML ``<target dev="..."/>``
@@ -28,7 +28,7 @@ class NetLatencyFault:
     """
 
     name: ClassVar[str] = "net.latency"
-    description: ClassVar[str] = f"Add {_DELAY_MS}ms RTT latency to first vNIC via tc netem."
+    description: ClassVar[str] = f"Add {_DELAY_MS}ms one-way latency to first vNIC via tc netem."
     destructive: ClassVar[bool] = False
 
     def inject(self, domain: libvirt.virDomain) -> None:

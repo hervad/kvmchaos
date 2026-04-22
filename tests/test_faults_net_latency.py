@@ -72,6 +72,11 @@ class TestNetLatencyNoInterface:
         with pytest.raises(RuntimeError, match="no network interface"):
             NetLatencyFault().inject(domain)
 
+    def test_verify_raises_when_no_interface(self):
+        domain = _mock_domain(xml=_XML_NO_IFACE)
+        with pytest.raises(RuntimeError, match="no network interface"):
+            NetLatencyFault().verify(domain)
+
     def test_revert_raises_when_no_interface(self):
         domain = _mock_domain(xml=_XML_NO_IFACE)
         with pytest.raises(RuntimeError, match="no network interface"):
