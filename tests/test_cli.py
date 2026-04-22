@@ -137,7 +137,7 @@ class TestRunRecord:
         data = json.loads(records[0].read_text())
         assert data["dry_run"] is True
         assert all(s["result"] == "skipped" for s in data["steps"])
-        assert data["outcome"] == "success"
+        assert data["outcome"] == "dry_run"
 
     def test_record_path_printed_to_stdout(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

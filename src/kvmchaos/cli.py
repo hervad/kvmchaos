@@ -299,6 +299,9 @@ def _write_and_print_record(
 ) -> None:
     """Build the run record dict, write it to disk, and print its path.
 
+    The ``outcome`` field is ``"fail"`` if any step failed, ``"dry_run"`` if
+    the run was a dry-run with no failures, and ``"success"`` otherwise.
+
     Args:
         fault_name: Name of the fault that was injected.
         vm: Target VM name.
@@ -308,7 +311,12 @@ def _write_and_print_record(
         ended_at: UTC datetime when the final step completed.
         steps: List of step result dicts from ``_run_step``.
     """
-    outcome = "success" if all(s["result"] in ("ok", "skipped") for s in steps) else "fail"
+    if any(s["result"] == "fail" for s in steps):
+        outcome = "fail"
+    elif dry_run:
+        outcome = "dry_run"
+    else:
+        outcome = "success"
     record: dict[str, object] = {
         "started_at": started_at.isoformat(timespec="seconds"),
         "ended_at": ended_at.isoformat(timespec="seconds"),
