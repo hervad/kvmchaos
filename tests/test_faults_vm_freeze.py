@@ -1,6 +1,6 @@
 """Tests for vm.freeze."""
 
-# test:///default does not implement cpu_shares scheduler attribute (QEMU-specific),
+# test:///default does not implement vcpu_quota scheduler attribute (QEMU-specific),
 # so all tests use MagicMock(spec=libvirt.virDomain).
 
 from unittest.mock import MagicMock
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import libvirt
 import pytest
 
-from kvmchaos.faults.vm_freeze import VmFreezeFault
+from kvmchaos.faults.vm_freeze import _QUOTA_THROTTLED, _QUOTA_UNLIMITED, VmFreezeFault
 
 
 class TestVmFreezeMetadata:
@@ -23,30 +23,30 @@ class TestVmFreezeMetadata:
 
 
 class TestVmFreezeHappyPath:
-    def _mock_domain(self, cpu_shares: int = 2) -> MagicMock:
+    def _mock_domain(self, vcpu_quota: int = _QUOTA_THROTTLED) -> MagicMock:
         domain = MagicMock(spec=libvirt.virDomain)
         domain.name.return_value = "testvm"
-        domain.schedulerParameters.return_value = {"cpu_shares": cpu_shares}
+        domain.schedulerParameters.return_value = {"vcpu_quota": vcpu_quota}
         return domain
 
-    def test_inject_sets_minimum_cpu_shares(self):
+    def test_inject_sets_throttled_quota(self):
         domain = self._mock_domain()
         VmFreezeFault().inject(domain)
-        domain.setSchedulerParameters.assert_called_once_with({"cpu_shares": 2})
+        domain.setSchedulerParameters.assert_called_once_with({"vcpu_quota": _QUOTA_THROTTLED})
 
-    def test_verify_passes_when_shares_are_minimum(self):
-        domain = self._mock_domain(cpu_shares=2)
+    def test_verify_passes_when_quota_is_throttled(self):
+        domain = self._mock_domain(vcpu_quota=_QUOTA_THROTTLED)
         VmFreezeFault().verify(domain)  # must not raise
 
-    def test_verify_raises_when_shares_not_minimum(self):
-        domain = self._mock_domain(cpu_shares=1024)
+    def test_verify_raises_when_quota_not_throttled(self):
+        domain = self._mock_domain(vcpu_quota=_QUOTA_UNLIMITED)
         with pytest.raises(RuntimeError, match="not throttled"):
             VmFreezeFault().verify(domain)
 
-    def test_revert_restores_default_shares(self):
+    def test_revert_restores_unlimited_quota(self):
         domain = self._mock_domain()
         VmFreezeFault().revert(domain)
-        domain.setSchedulerParameters.assert_called_once_with({"cpu_shares": 1024})
+        domain.setSchedulerParameters.assert_called_once_with({"vcpu_quota": _QUOTA_UNLIMITED})
 
 
 class TestVmFreezeErrors:

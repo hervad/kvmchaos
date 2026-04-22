@@ -113,6 +113,9 @@ def inject_cmd(
     dry_run: bool = typer.Option(
         False, "--dry-run", "-n", help="Print plan without making changes."
     ),
+    duration: int = typer.Option(
+        20, "--duration", "-d", help="Seconds to hold the fault before reverting.", min=0
+    ),
 ) -> None:
     """Inject a fault into a VM, verify it took effect, then revert.
 
@@ -124,6 +127,7 @@ def inject_cmd(
         vm: Name of the target libvirt domain.
         assume_yes: If True, skip the confirmation prompt.
         dry_run: If True, validate args and print plan without touching libvirt state.
+        duration: Seconds to hold the fault before reverting.
     """
     configure_logging()
 
@@ -169,6 +173,12 @@ def inject_cmd(
                 dry_run=dry_run,
             )
             raise typer.Exit(code=1) from None
+
+        if dry_run:
+            typer.echo(f"[dry-run] would: hold {fault_name} on {vm} for {duration}s")
+        elif duration > 0:
+            typer.echo(f"Holding '{fault_name}' on '{vm}' for {duration}s …")
+            time.sleep(duration)
 
         _run_step(
             fault.revert, domain, action="revert", fault_name=fault_name, vm=vm, dry_run=dry_run

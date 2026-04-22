@@ -9,9 +9,13 @@ QEMU/KVM guests). Raises libvirtError if the driver is absent.
 
 from __future__ import annotations
 
+import time
 from typing import ClassVar
 
 import libvirt
+
+_VERIFY_RETRIES = 5
+_VERIFY_SLEEP = 1.0  # seconds between retries
 
 
 class VmStarveFault:
@@ -38,26 +42,29 @@ class VmStarveFault:
         domain.setMemory(domain.maxMemory() // 4)
 
     def verify(self, domain: libvirt.virDomain) -> None:
-        """Assert balloon target is at or below 50% of configured maximum.
+        """Assert balloon has settled at or below 50% of configured maximum.
 
-        Uses a 50% bound (rather than exactly 25%) to tolerate balloon
-        driver settling latency.
+        Retries up to _VERIFY_RETRIES times with a short sleep to allow the
+        guest balloon driver time to respond to the setMemory call.
 
         Args:
             domain: A live libvirt domain handle.
 
         Raises:
-            RuntimeError: If memory is still above 50% of max after inject.
+            RuntimeError: If memory remains above 50% of max after all retries.
             libvirt.libvirtError: On libvirt API failure.
         """
-        stats = domain.memoryStats()
-        actual = stats.get("actual", domain.maxMemory())
         threshold = domain.maxMemory() // 2
-        if actual > threshold:
-            raise RuntimeError(
-                f"domain '{domain.name()}' not starved after inject "
-                f"(actual={actual}KB, threshold={threshold}KB)"
-            )
+        for attempt in range(_VERIFY_RETRIES):
+            actual = domain.memoryStats().get("actual", domain.maxMemory())
+            if actual <= threshold:
+                return
+            if attempt < _VERIFY_RETRIES - 1:
+                time.sleep(_VERIFY_SLEEP)
+        raise RuntimeError(
+            f"domain '{domain.name()}' not starved after inject "
+            f"(actual={actual}KB, threshold={threshold}KB)"
+        )
 
     def revert(self, domain: libvirt.virDomain) -> None:
         """Balloon domain memory back to its configured maximum.
