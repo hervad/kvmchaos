@@ -24,6 +24,21 @@ def add_netem_delay(dev: str, delay_ms: int) -> None:
     _run(["tc", "qdisc", "replace", "dev", dev, "root", "netem", "delay", f"{delay_ms}ms"])
 
 
+def add_netem_loss(dev: str, loss_percent: int) -> None:
+    """Add or replace a netem qdisc with a fixed packet-loss rate on a network device.
+
+    Uses ``replace`` so the call is idempotent if a qdisc already exists.
+
+    Args:
+        dev: Host network device name (e.g. ``'vnet0'``).
+        loss_percent: Percentage of packets to drop (0-100).
+
+    Raises:
+        RuntimeError: If tc exits non-zero (e.g. device not found, no permission).
+    """
+    _run(["tc", "qdisc", "replace", "dev", dev, "root", "netem", "loss", f"{loss_percent}%"])
+
+
 def del_root_qdisc(dev: str) -> None:
     """Remove the root qdisc from a network device, restoring the kernel default.
 

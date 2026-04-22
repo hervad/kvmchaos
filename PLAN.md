@@ -125,7 +125,17 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 - [x] `ruff check`, `ruff format --check` clean
 - [x] Lab validation on Fedora 43 KVM host (2026-04-23)
 
-## Backlog (post-v0.8, not scheduled)
+## Acceptance (v0.9)
+
+- [ ] `net.packet-loss` registered in `list-faults` with `local_only = True`
+- [ ] `kvmchaos inject net.packet-loss <vm> --loss N` drops N% of packets via tc netem
+- [ ] `--loss` defaults to 50; accepted range 1-100
+- [ ] Revert removes the root qdisc, restoring kernel default
+- [ ] `pytest` passes with coverage >=85%
+- [ ] `ruff check`, `ruff format --check` clean
+- [ ] Lab validation on Fedora 43 KVM host
+
+## Backlog (post-v0.9, not scheduled)
 
 - `disk.corrupt` — targeted block-level corruption (high risk, needs design)
 - `migration.abort` — deferred; requires a second KVM host (or a nested-KVM

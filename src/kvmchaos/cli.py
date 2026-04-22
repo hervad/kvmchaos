@@ -26,6 +26,7 @@ from kvmchaos.eventlog import configure_logging, log_event
 from kvmchaos.faults import FAULTS
 from kvmchaos.faults.disk_fill import DiskFillFault
 from kvmchaos.faults.disk_latency import DiskLatencyFault
+from kvmchaos.faults.net_packet_loss import NetPacketLossFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
 from kvmchaos.report import generate as generate_report
 from kvmchaos.report import load_records, render_html
@@ -357,6 +358,14 @@ def inject_cmd(
         help="Fill size in MiB (disk.fill only).",
         min=1,
     ),
+    loss: int = typer.Option(
+        50,
+        "--loss",
+        "-l",
+        help="Packet loss percentage (net.packet-loss only).",
+        min=1,
+        max=100,
+    ),
 ) -> None:
     """Inject a fault into a VM, verify it took effect, then revert.
 
@@ -371,6 +380,7 @@ def inject_cmd(
         duration: Seconds to hold the fault before reverting.
         bandwidth: Disk I/O throttle in MB/s, used only by disk.latency.
         size: Fill size in MiB, used only by disk.fill.
+        loss: Packet loss percentage, used only by net.packet-loss.
     """
     configure_logging()
 
@@ -385,6 +395,8 @@ def inject_cmd(
         fault = DiskLatencyFault(bandwidth_bps=bandwidth * 1_000_000)
     elif fault_name == "disk.fill":
         fault = DiskFillFault(fill_bytes=size * 1024 * 1024)
+    elif fault_name == "net.packet-loss":
+        fault = NetPacketLossFault(loss_percent=loss)
 
     raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
     resolved_uri = resolve_uri(raw_uri)
