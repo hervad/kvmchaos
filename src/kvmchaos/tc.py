@@ -42,6 +42,11 @@ def show_qdisc(dev: str) -> str:
     Never raises — returns empty string on failure so callers can
     inspect without catching exceptions.
 
+    Note: An empty string is ambiguous — it may indicate that the
+    device was not found, or that no qdisc is installed. Callers must
+    be aware of this limitation and verify device existence separately
+    if disambiguation is needed.
+
     Args:
         dev: Host network device name.
 

@@ -51,9 +51,19 @@ class TestShowQdisc:
             )
             result = tc.show_qdisc("vnet0")
             assert result == "qdisc netem 8001: root"
+            mock_run.assert_called_once_with(
+                ["tc", "qdisc", "show", "dev", "vnet0"],
+                capture_output=True,
+                text=True,
+            )
 
     def test_does_not_raise_on_nonzero_exit(self):
         with patch("kvmchaos.tc.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="no device")
             result = tc.show_qdisc("vnet0")
             assert result == ""
+            mock_run.assert_called_once_with(
+                ["tc", "qdisc", "show", "dev", "vnet0"],
+                capture_output=True,
+                text=True,
+            )
