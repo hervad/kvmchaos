@@ -117,13 +117,13 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 
 ## Acceptance (v0.8)
 
-- [ ] `disk.fill` registered in `list-faults` with `local_only = True`
-- [ ] `kvmchaos inject disk.fill <vm> --size N` creates a fill file of N MiB next to the VM image
-- [ ] Fill file placed at `<image-dir>/.kvmchaos-fill-<vm>` on the host filesystem
-- [ ] Revert deletes the fill file; revert is idempotent (no error if already gone)
-- [ ] `pytest` passes with coverage ≥85%
-- [ ] `ruff check`, `ruff format --check` clean
-- [ ] Lab validation on Fedora 43 KVM host
+- [x] `disk.fill` registered in `list-faults` with `local_only = True`
+- [x] `kvmchaos inject disk.fill <vm> --size N` creates a fill file of N MiB next to the VM image
+- [x] Fill file placed at `<image-dir>/.kvmchaos-fill-<vm>` on the host filesystem
+- [x] Revert deletes the fill file; revert is idempotent (no error if already gone)
+- [x] `pytest` passes with coverage ≥85%
+- [x] `ruff check`, `ruff format --check` clean
+- [x] Lab validation on Fedora 43 KVM host (2026-04-23)
 
 ## Backlog (post-v0.8, not scheduled)
 
