@@ -1,0 +1,179 @@
+"""Tests for the `runs list` and `runs show` CLI subcommands."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from kvmchaos.cli import app
+from kvmchaos.runrecord import load_record, resolve_id
+
+runner = CliRunner()
+
+
+def _write(runs: Path, name: str, record: dict[str, object]) -> Path:
+    runs.mkdir(parents=True, exist_ok=True)
+    path = runs / f"{name}.json"
+    path.write_text(json.dumps(record))
+    return path
+
+
+def _sample(started_at: str, fault: str = "vm.pause", vm: str = "server1") -> dict[str, object]:
+    return {
+        "started_at": started_at,
+        "ended_at": started_at,
+        "fault": fault,
+        "vm": vm,
+        "uri": "qemu:///system",
+        "dry_run": False,
+        "duration_s": 1,
+        "outcome": "success",
+        "steps": [],
+    }
+
+
+class TestResolveId:
+    def test_exact_match(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path, "20260422T220314Z-disk-latency-server1", _sample("2026-04-22T22:03:14+00:00")
+        )
+        path = resolve_id(tmp_path, "20260422T220314Z-disk-latency-server1")
+        assert path.name == "20260422T220314Z-disk-latency-server1.json"
+
+    def test_unambiguous_prefix(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path, "20260422T220314Z-disk-latency-server1", _sample("2026-04-22T22:03:14+00:00")
+        )
+        _write(tmp_path, "20260422T100000Z-vm-pause-server2", _sample("2026-04-22T10:00:00+00:00"))
+        path = resolve_id(tmp_path, "20260422T22")
+        assert "disk-latency" in path.name
+
+    def test_ambiguous_prefix_raises(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path, "20260422T220314Z-disk-latency-server1", _sample("2026-04-22T22:03:14+00:00")
+        )
+        _write(tmp_path, "20260422T220500Z-vm-pause-server1", _sample("2026-04-22T22:05:00+00:00"))
+        with pytest.raises(ValueError, match="ambiguous"):
+            resolve_id(tmp_path, "20260422T22")
+
+    def test_no_match_raises(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path, "20260422T220314Z-disk-latency-server1", _sample("2026-04-22T22:03:14+00:00")
+        )
+        with pytest.raises(FileNotFoundError):
+            resolve_id(tmp_path, "nonexistent")
+
+    def test_missing_dir_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            resolve_id(tmp_path / "nope", "anything")
+
+
+class TestLoadRecord:
+    def test_loads_and_parses_json(self, tmp_path: Path) -> None:
+        record = _sample("2026-04-22T22:03:14+00:00")
+        path = _write(tmp_path, "x", record)
+        loaded = load_record(path)
+        assert loaded["fault"] == "vm.pause"
+        assert loaded["vm"] == "server1"
+
+
+class TestRunsListCommand:
+    def test_empty_dir_prints_no_runs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        result = runner.invoke(app, ["runs", "list"])
+        assert result.exit_code == 0
+        assert "No runs." in result.stdout
+
+    def test_populated_dir_shows_table(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        runs = tmp_path / "kvmchaos" / "runs"
+        _write(runs, "20260422T220000Z-vm-pause-server1", _sample("2026-04-22T22:00:00+00:00"))
+        _write(
+            runs,
+            "20260422T100000Z-disk-latency-server2",
+            _sample("2026-04-22T10:00:00+00:00", "disk.latency", "server2"),
+        )
+        result = runner.invoke(app, ["runs", "list"])
+        assert result.exit_code == 0
+        assert "vm.pause" in result.stdout
+        assert "disk.latency" in result.stdout
+        # Newest first: T22 row precedes T10 row.
+        assert result.stdout.index("T22") < result.stdout.index("T10")
+
+    def test_limit_option(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        runs = tmp_path / "kvmchaos" / "runs"
+        for hour in range(5):
+            _write(
+                runs,
+                f"20260422T{hour:02d}0000Z-vm-pause-server1",
+                _sample(f"2026-04-22T{hour:02d}:00:00+00:00"),
+            )
+        result = runner.invoke(app, ["runs", "list", "--limit", "2"])
+        assert result.exit_code == 0
+        # 2 rows + 1 header line = 3 non-empty lines.
+        body_lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+        assert len(body_lines) == 3
+
+    def test_runs_dir_option(self, tmp_path: Path) -> None:
+        custom = tmp_path / "custom"
+        _write(custom, "20260422T220000Z-vm-pause-server1", _sample("2026-04-22T22:00:00+00:00"))
+        result = runner.invoke(app, ["runs", "list", "--runs-dir", str(custom)])
+        assert result.exit_code == 0
+        assert "vm.pause" in result.stdout
+
+
+class TestRunsShowCommand:
+    def test_exact_id(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "20260422T220314Z-disk-latency-server1",
+            _sample("2026-04-22T22:03:14+00:00", "disk.latency"),
+        )
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "show",
+                "20260422T220314Z-disk-latency-server1",
+                "--runs-dir",
+                str(tmp_path),
+            ],
+        )
+        assert result.exit_code == 0
+        payload = json.loads(result.stdout)
+        assert payload["fault"] == "disk.latency"
+
+    def test_unambiguous_prefix(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "20260422T220314Z-disk-latency-server1",
+            _sample("2026-04-22T22:03:14+00:00", "disk.latency"),
+        )
+        result = runner.invoke(app, ["runs", "show", "20260422T22", "--runs-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        payload = json.loads(result.stdout)
+        assert payload["fault"] == "disk.latency"
+
+    def test_ambiguous_prefix_exits_2(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path, "20260422T220314Z-disk-latency-server1", _sample("2026-04-22T22:03:14+00:00")
+        )
+        _write(tmp_path, "20260422T220500Z-vm-pause-server1", _sample("2026-04-22T22:05:00+00:00"))
+        result = runner.invoke(app, ["runs", "show", "20260422T22", "--runs-dir", str(tmp_path)])
+        assert result.exit_code == 2
+        assert "ambiguous" in result.stdout.lower() or "ambiguous" in (result.stderr or "").lower()
+
+    def test_unknown_id_exits_2(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path, "20260422T220314Z-disk-latency-server1", _sample("2026-04-22T22:03:14+00:00")
+        )
+        result = runner.invoke(app, ["runs", "show", "nope", "--runs-dir", str(tmp_path)])
+        assert result.exit_code == 2

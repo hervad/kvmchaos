@@ -89,8 +89,23 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 - [x] `pytest` passes with coverage ≥85%
 - [x] `ruff check`, `ruff format --check` clean
 
-## Backlog (post-v0.5, not scheduled)
+## Acceptance (v0.6)
 
+- [x] `kvmchaos runs list` prints `No runs.` on an empty directory, exit 0
+- [x] `kvmchaos runs list` prints a newest-first table with columns
+      `id`, `started_at`, `fault`, `vm`, `outcome`, `duration_s`
+- [x] `--limit N` caps the number of rows
+- [x] `--runs-dir DIR` honoured on both `list` and `show`
+- [x] `kvmchaos runs show <id>` prints the record as indented JSON
+- [x] Unambiguous id prefix accepted; ambiguous prefix exits 2 with candidates
+- [x] Unknown id exits 2 with a helpful message
+- [x] `pytest` passes with coverage ≥85%
+- [x] `ruff check`, `ruff format --check` clean
+
+## Backlog (post-v0.6, not scheduled)
+
+- Report filtering: `--since`, `--fault`, `--outcome`, `--vm` on `kvmchaos report`
+- Second filesystem-layer fault (e.g. `disk.fill` or `disk.corrupt`)
 - `migration.abort` — deferred; requires a second KVM host (or a nested-KVM
   lab setup) to produce an in-flight migration to cancel. Revisit when the
   lab grows beyond a single hypervisor.

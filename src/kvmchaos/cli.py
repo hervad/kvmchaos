@@ -11,6 +11,7 @@ fault logic lives in `kvmchaos.faults`.
 
 from __future__ import annotations
 
+import json
 import time
 import urllib.parse
 from collections.abc import Callable
@@ -26,7 +27,8 @@ from kvmchaos.faults import FAULTS
 from kvmchaos.faults.disk_latency import DiskLatencyFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
 from kvmchaos.report import generate as generate_report
-from kvmchaos.runrecord import default_runs_dir, write_run_record
+from kvmchaos.report import load_records
+from kvmchaos.runrecord import default_runs_dir, load_record, resolve_id, write_run_record
 from kvmchaos.safety import confirm
 
 app = typer.Typer(
@@ -121,6 +123,104 @@ def report_cmd(
     target_runs = runs_dir if runs_dir is not None else default_runs_dir()
     written = generate_report(output, target_runs)
     typer.echo(f"Report: {written}")
+
+
+runs_app = typer.Typer(
+    help="Inspect saved run records.",
+    no_args_is_help=True,
+    add_completion=False,
+)
+app.add_typer(runs_app, name="runs")
+
+
+@runs_app.command("list")
+def runs_list_cmd(
+    limit: int = typer.Option(20, "--limit", "-n", min=1, help="Max rows to print."),
+    runs_dir: Path | None = typer.Option(
+        None,
+        "--runs-dir",
+        help="Directory of run records. Defaults to $XDG_STATE_HOME/kvmchaos/runs.",
+    ),
+) -> None:
+    """List recent run records, newest first.
+
+    Args:
+        limit: Maximum number of rows to display.
+        runs_dir: Runs directory. If omitted, ``default_runs_dir()`` is used.
+    """
+    target = runs_dir if runs_dir is not None else default_runs_dir()
+    records = load_records(target)[:limit]
+    if not records:
+        typer.echo("No runs.")
+        return
+    typer.echo(_runs_table(target, records))
+
+
+@runs_app.command("show")
+def runs_show_cmd(
+    run_id: str = typer.Argument(..., metavar="ID", help="Run id or unambiguous prefix."),
+    runs_dir: Path | None = typer.Option(
+        None,
+        "--runs-dir",
+        help="Directory of run records. Defaults to $XDG_STATE_HOME/kvmchaos/runs.",
+    ),
+) -> None:
+    """Print one run record as formatted JSON.
+
+    Args:
+        run_id: Full record stem or unambiguous prefix.
+        runs_dir: Runs directory. If omitted, ``default_runs_dir()`` is used.
+    """
+    target = runs_dir if runs_dir is not None else default_runs_dir()
+    try:
+        path = resolve_id(target, run_id)
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from exc
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(json.dumps(load_record(path), indent=2))
+
+
+def _runs_table(runs_dir: Path, records: list[dict[str, object]]) -> str:
+    """Format a list of records as a plain-text table.
+
+    Args:
+        runs_dir: Directory the records came from (used to derive each ``id``
+            as the filename stem).
+        records: Pre-sorted records, newest first.
+
+    Returns:
+        A newline-separated table, header first.
+    """
+    columns = ("id", "started_at", "fault", "vm", "outcome", "duration_s")
+    rows = [columns]
+    for rec in records:
+        rows.append(
+            (
+                _record_id(runs_dir, rec),
+                str(rec.get("started_at", "")),
+                str(rec.get("fault", "")),
+                str(rec.get("vm", "")),
+                str(rec.get("outcome", "")),
+                str(rec.get("duration_s", "")),
+            )
+        )
+    widths = [max(len(row[i]) for row in rows) for i in range(len(columns))]
+    return "\n".join("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)) for row in rows)
+
+
+def _record_id(runs_dir: Path, record: dict[str, object]) -> str:
+    """Derive a record's on-disk id from its fields.
+
+    Mirrors the filename scheme in :func:`kvmchaos.runrecord.write_run_record`
+    so callers can resolve the id back to a file without a second stat.
+    """
+    dt = datetime.fromisoformat(str(record["started_at"])).astimezone(UTC)
+    compact = dt.strftime("%Y%m%dT%H%M%SZ")
+    fault_slug = str(record.get("fault", "")).replace(".", "-")
+    return f"{compact}-{fault_slug}-{record.get('vm', '')}"
 
 
 # Map libvirt domain state integers to human-readable strings.
