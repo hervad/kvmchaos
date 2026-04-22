@@ -35,20 +35,16 @@ def add_partition(dev: str) -> None:
         RuntimeError: If any nft command exits non-zero.
     """
     table = _table_name(dev)
-    _run(["nft", "add", "table", _TABLE_FAMILY, table])
-    _run(
-        [
-            "nft",
-            "add",
-            "chain",
-            _TABLE_FAMILY,
-            table,
-            _CHAIN_NAME,
-            f"{{ type filter hook forward priority {_CHAIN_PRIORITY}; policy accept; }}",
-        ]
+    script = (
+        f"table {_TABLE_FAMILY} {table} {{\n"
+        f"  chain {_CHAIN_NAME} {{\n"
+        f"    type filter hook forward priority {_CHAIN_PRIORITY}; policy accept;\n"
+        f'    iifname "{dev}" drop\n'
+        f'    oifname "{dev}" drop\n'
+        f"  }}\n"
+        f"}}\n"
     )
-    _run(["nft", "add", "rule", _TABLE_FAMILY, table, _CHAIN_NAME, "iifname", dev, "drop"])
-    _run(["nft", "add", "rule", _TABLE_FAMILY, table, _CHAIN_NAME, "oifname", dev, "drop"])
+    _run_script(script)
 
 
 def del_partition(dev: str) -> None:
@@ -108,3 +104,25 @@ def _run(cmd: list[str]) -> None:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"nft command failed: {' '.join(cmd)}\n{result.stderr.strip()}")
+
+
+def _run_script(script: str) -> None:
+    """Feed an nft script to ``nft -f -`` via stdin, raising RuntimeError on failure.
+
+    Using ``-f -`` avoids shell quoting issues with brace-delimited chain specs
+    that arise when passing them as individual subprocess arguments.
+
+    Args:
+        script: Complete nft script text.
+
+    Raises:
+        RuntimeError: If nft exits non-zero.
+    """
+    result = subprocess.run(
+        ["nft", "-f", "-"],
+        input=script,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"nft script failed:\n{script}\n{result.stderr.strip()}")

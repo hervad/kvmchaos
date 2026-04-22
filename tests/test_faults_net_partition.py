@@ -94,13 +94,12 @@ class TestNftModule:
         with patch("kvmchaos.nft.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
             nft.add_partition("vnet0")
-        calls = [c[0][0] for c in mock_run.call_args_list]
-        # Must create table, chain, and two drop rules
-        joined = [" ".join(c) for c in calls]
-        assert any("add table" in c for c in joined)
-        assert any("add chain" in c for c in joined)
-        assert any("iifname" in c and "drop" in c for c in joined)
-        assert any("oifname" in c and "drop" in c for c in joined)
+        # Single _run_script call via nft -f -
+        mock_run.assert_called_once()
+        script = mock_run.call_args.kwargs["input"]
+        assert "iifname" in script and "drop" in script
+        assert "oifname" in script and "drop" in script
+        assert "hook forward" in script
 
     def test_del_partition_deletes_table(self):
         with patch("kvmchaos.nft.subprocess.run") as mock_run:
@@ -125,5 +124,5 @@ class TestNftModule:
     def test_add_partition_raises_on_nft_failure(self):
         with patch("kvmchaos.nft.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="Operation not permitted")
-            with pytest.raises(RuntimeError, match="nft command failed"):
+            with pytest.raises(RuntimeError, match="nft script failed"):
                 nft.add_partition("vnet0")
