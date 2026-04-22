@@ -49,14 +49,14 @@ class TestRemoteGuard:
             ],
         )
         assert result.exit_code == 2
-        assert "requires local execution" in result.stderr
+        assert "requires local execution" in result.output
 
     def test_local_only_fault_with_local_uri_is_not_blocked(self) -> None:
         result = runner.invoke(
             app,
             ["--connect", "test:///default", "inject", "--yes", "--dry-run", "net.latency", "test"],
         )
-        assert "requires local execution" not in result.stderr
+        assert "requires local execution" not in result.output
 
     def test_non_local_only_fault_with_remote_uri_not_blocked(self) -> None:
         # vm.pause is not local_only — guard must not trigger.
@@ -76,4 +76,4 @@ class TestRemoteGuard:
                     "server1",
                 ],
             )
-        assert "requires local execution" not in result.stderr
+        assert "requires local execution" not in result.output
