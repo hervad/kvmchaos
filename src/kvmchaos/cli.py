@@ -456,19 +456,40 @@ def inject_cmd(
             )
             raise typer.Exit(code=1)
 
-        if dry_run:
-            typer.echo(f"[dry-run] would: hold {fault_name} on {vm} for {duration}s")
-        elif duration > 0:
-            typer.echo(f"Holding '{fault_name}' on '{vm}' for {duration}s …")
-            time.sleep(duration)
-
-        revert_step = _run_step(
-            fault.revert, domain, action="revert", fault_name=fault_name, vm=vm, dry_run=dry_run
-        )
-        steps.append(revert_step)
+        interrupted = False
+        try:
+            if dry_run:
+                typer.echo(f"[dry-run] would: hold {fault_name} on {vm} for {duration}s")
+            elif duration > 0:
+                typer.echo(f"Holding '{fault_name}' on '{vm}' for {duration}s …")
+                time.sleep(duration)
+        except KeyboardInterrupt:
+            interrupted = True
+            typer.echo("\nInterrupted — reverting …", err=True)
+        finally:
+            revert_step = _run_step(
+                fault.revert,
+                domain,
+                action="revert",
+                fault_name=fault_name,
+                vm=vm,
+                dry_run=dry_run,
+            )
+            steps.append(revert_step)
 
         ended_at = datetime.now(UTC)
-        _write_and_print_record(fault_name, vm, resolved_uri, dry_run, started_at, ended_at, steps)
+        _write_and_print_record(
+            fault_name,
+            vm,
+            resolved_uri,
+            dry_run,
+            started_at,
+            ended_at,
+            steps,
+            interrupted=interrupted,
+        )
+        if interrupted:
+            raise typer.Exit(code=1)
 
 
 def _run_step(
@@ -525,11 +546,14 @@ def _write_and_print_record(
     started_at: datetime,
     ended_at: datetime,
     steps: list[dict[str, object]],
+    *,
+    interrupted: bool = False,
 ) -> None:
     """Build the run record dict, write it to disk, and print its path.
 
     The ``outcome`` field is ``"fail"`` if any step failed, ``"dry_run"`` if
-    the run was a dry-run with no failures, and ``"success"`` otherwise.
+    the run was a dry-run with no failures, ``"interrupted"`` if the hold was
+    cancelled by the user, and ``"success"`` otherwise.
 
     Args:
         fault_name: Name of the fault that was injected.
@@ -539,9 +563,12 @@ def _write_and_print_record(
         started_at: UTC datetime when inject_cmd began executing steps.
         ended_at: UTC datetime when the final step completed.
         steps: List of step result dicts from ``_run_step``.
+        interrupted: True if a KeyboardInterrupt cut the hold short.
     """
     if any(s["result"] == "fail" for s in steps):
         outcome = "fail"
+    elif interrupted:
+        outcome = "interrupted"
     elif dry_run:
         outcome = "dry_run"
     else:

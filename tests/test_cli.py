@@ -351,6 +351,69 @@ class TestDiskFillCli:
         assert result.exit_code == 0
 
 
+class TestInterruptedInject:
+    def test_revert_runs_on_keyboard_interrupt(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from unittest.mock import MagicMock, patch
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        mock_fault = MagicMock()
+        mock_fault.description = "test fault"
+        mock_fault.destructive = False
+        mock_fault.local_only = False
+
+        with (
+            patch("kvmchaos.cli.FAULTS", {"vm.pause": mock_fault}),
+            patch("kvmchaos.cli.time.sleep", side_effect=KeyboardInterrupt),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "--connect",
+                    "test:///default",
+                    "inject",
+                    "--yes",
+                    "--duration",
+                    "30",
+                    "vm.pause",
+                    "test",
+                ],
+            )
+
+        mock_fault.revert.assert_called_once()
+        assert result.exit_code == 1
+
+    def test_interrupted_record_has_interrupted_outcome(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from unittest.mock import patch
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        with patch("kvmchaos.cli.time.sleep", side_effect=KeyboardInterrupt):
+            runner.invoke(
+                app,
+                [
+                    "--connect",
+                    "test:///default",
+                    "inject",
+                    "--yes",
+                    "--duration",
+                    "30",
+                    "vm.pause",
+                    "test",
+                ],
+            )
+
+        runs_dir = tmp_path / "kvmchaos" / "runs"
+        records = list(runs_dir.glob("*.json"))
+        assert len(records) == 1
+        data = json.loads(records[0].read_text())
+        assert data["outcome"] == "interrupted"
+        assert any(s["action"] == "revert" for s in data["steps"])
+
+
 class TestNetPacketLossCli:
     def test_net_packet_loss_appears_in_list_faults(self) -> None:
         result = runner.invoke(app, ["list-faults"])
