@@ -24,11 +24,18 @@ Read both spec and PLAN.md before proposing non-trivial changes.
 - Use `MagicMock(spec=libvirt.virDomain)` only for `libvirtError` error paths.
 - Coverage target: ≥85%.
 
+## Platform target
+
+Primary: **RHEL 9** KVM host. Dev host: Fedora 43 (functionally identical).
+`disk.latency` requires cgroup v2 — default on RHEL 9, opt-in on RHEL 8.
+`clock.skew` requires `qemu-guest-agent` in the guest.
+All `net.*` faults use `tc netem` — no `br_netfilter` required.
+
 ## Dependencies
 
 - Runtime: `libvirt-python`, `typer`. No others without a design change.
 - Dev: `pytest`, `pytest-cov`, `ruff`.
-- Requires system package: `libvirt-devel` + `pkg-config` (Fedora: `dnf install libvirt-devel pkg-config`).
+- Requires system package: `libvirt-devel` + `pkg-config` (Fedora/RHEL: `dnf install libvirt-devel pkg-config`).
 
 ## Commands
 

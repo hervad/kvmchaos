@@ -27,10 +27,23 @@ See `docs/superpowers/specs/2026-04-20-kvmchaos-v0.1-design.md` for the spec.
 - [x] `pytest` passes with coverage ≥85%
 - [x] `ruff check`, `ruff format --check` clean
 
+## Platform Compatibility
+
+Primary target: **RHEL 9** KVM host. Dev/lab host: Fedora 43 (functionally identical).
+
+| Fault | RHEL 9 | RHEL 8 | Notes |
+|---|---|---|---|
+| `vm.*`, `net.*`, `clock.skew` | ✅ | ✅ | No special requirements |
+| `disk.latency` | ✅ | ⚠️ | Requires cgroup v2; RHEL 8 defaults to v1 — enable with `systemd.unified_cgroup_hierarchy=1` at boot |
+| `disk.fill` | ✅ | ✅ | Requires write access to image directory |
+| `clock.skew` | ✅ | ✅ | Requires `qemu-guest-agent` in guest |
+
+All `net.*` faults use `tc netem` on the host tap device — no `br_netfilter` or nftables required.
+
 ## Lab Validation (required after every version)
 
 After automated tests pass, manually test against the lab environment:
-**Host:** Fedora 43 KVM · **Guest:** RHEL 9.7 VM
+**Dev host:** Fedora 43 KVM · **Primary target:** RHEL 9 KVM · **Guest:** RHEL 9.7 VM
 
 - [x] `kvmchaos list-vms` shows the RHEL 9.7 VM
 - [x] `--dry-run` prints plan with no prompt and no log entry (2026-04-22)
