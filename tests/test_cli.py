@@ -267,3 +267,45 @@ class TestBandwidthFlag:
                 ],
             )
         assert result.exit_code == 0
+
+
+class TestReport:
+    def test_empty_runs_dir_exits_zero(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        runs.mkdir()
+        out = tmp_path / "r.html"
+        result = runner.invoke(app, ["report", "--output", str(out), "--runs-dir", str(runs)])
+        assert result.exit_code == 0
+        assert out.is_file()
+        assert "No runs" in out.read_text()
+        assert f"Report: {out}" in result.stdout
+
+    def test_uses_default_runs_dir_via_xdg(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import json
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        runs = tmp_path / "kvmchaos" / "runs"
+        runs.mkdir(parents=True)
+        (runs / "a.json").write_text(
+            json.dumps(
+                {
+                    "started_at": "2026-04-22T22:00:00+00:00",
+                    "ended_at": "2026-04-22T22:00:01+00:00",
+                    "fault": "vm.pause",
+                    "vm": "server1",
+                    "uri": "qemu:///system",
+                    "dry_run": False,
+                    "duration_s": 1,
+                    "outcome": "success",
+                    "steps": [],
+                }
+            )
+        )
+        out = tmp_path / "r.html"
+        result = runner.invoke(app, ["report", "--output", str(out)])
+        assert result.exit_code == 0
+        body = out.read_text()
+        assert "vm.pause" in body
+        assert "server1" in body

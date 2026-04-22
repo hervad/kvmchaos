@@ -77,10 +77,23 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 - [x] `ruff check`, `ruff format --check` clean
 - [x] Lab validation on Fedora 43 KVM host (2026-04-22)
 
-## Backlog (post-v0.4, not scheduled)
+## Acceptance (v0.5)
 
-- `migration.abort`
-- HTML report generator
+- [x] `kvmchaos report` reads run records under `$XDG_STATE_HOME/kvmchaos/runs/`
+      and writes a self-contained HTML file (default `./kvmchaos-report.html`)
+- [x] `--output PATH` and `--runs-dir DIR` options respected
+- [x] Empty runs dir produces valid HTML with a "No runs" message, exit 0
+- [x] Summary header shows total, success / fail / dry_run counts, date range
+- [x] Table columns: `started_at`, `fault`, `vm`, `outcome`, `duration_s`,
+      `dry_run`; each row has an expandable `<details>` with the steps JSON
+- [x] `pytest` passes with coverage ≥85%
+- [x] `ruff check`, `ruff format --check` clean
+
+## Backlog (post-v0.5, not scheduled)
+
+- `migration.abort` — deferred; requires a second KVM host (or a nested-KVM
+  lab setup) to produce an in-flight migration to cancel. Revisit when the
+  lab grows beyond a single hypervisor.
 
 ## Decisions Log
 
@@ -103,3 +116,4 @@ _(Add entries when a decision is reversed or revised, do not delete old rows.)_
 | Date       | Revised decision                                           | Rationale                                                   |
 | ---------- | ---------------------------------------------------------- | ----------------------------------------------------------- |
 | 2026-04-22 | `disk.latency` uses cgroup v2 `io.max`, not `dm-delay`.    | dm-delay is unsafe to live-inject on a qcow2-backed disk.   |
+| 2026-04-23 | Defer `migration.abort` past v0.5.                         | Single-host lab cannot produce an in-flight migration.      |

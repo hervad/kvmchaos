@@ -15,6 +15,7 @@ import time
 import urllib.parse
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 
 import libvirt
 import typer
@@ -24,6 +25,7 @@ from kvmchaos.eventlog import configure_logging, log_event
 from kvmchaos.faults import FAULTS
 from kvmchaos.faults.disk_latency import DiskLatencyFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
+from kvmchaos.report import generate as generate_report
 from kvmchaos.runrecord import default_runs_dir, write_run_record
 from kvmchaos.safety import confirm
 
@@ -35,6 +37,8 @@ app = typer.Typer(
 
 # Shared state passed from the root callback to subcommands via Context.obj.
 _CTX_KEY = "connect_uri"
+
+_DEFAULT_REPORT_PATH = Path("kvmchaos-report.html")
 
 
 def _version_callback(value: bool) -> None:
@@ -92,6 +96,31 @@ def list_faults() -> None:
     for name, fault in FAULTS.items():
         marker = "destructive" if fault.destructive else "safe"
         typer.echo(f"{name:<{col_name}}  [{marker:<11}]  {fault.description}")
+
+
+@app.command("report")
+def report_cmd(
+    output: Path = typer.Option(
+        _DEFAULT_REPORT_PATH,
+        "--output",
+        "-o",
+        help="Destination HTML file.",
+    ),
+    runs_dir: Path | None = typer.Option(
+        None,
+        "--runs-dir",
+        help="Directory of run records. Defaults to $XDG_STATE_HOME/kvmchaos/runs.",
+    ),
+) -> None:
+    """Render a static HTML report of all run records.
+
+    Args:
+        output: Destination HTML file. Parent directories are created as needed.
+        runs_dir: Runs directory. If omitted, ``default_runs_dir()`` is used.
+    """
+    target_runs = runs_dir if runs_dir is not None else default_runs_dir()
+    written = generate_report(output, target_runs)
+    typer.echo(f"Report: {written}")
 
 
 # Map libvirt domain state integers to human-readable strings.
