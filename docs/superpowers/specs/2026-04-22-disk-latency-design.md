@@ -47,9 +47,13 @@ up a singleton.
    running domain). Raises `FileNotFoundError` if VM is not running.
 2. Read `/proc/<pid>/cgroup`, extract the path after `0::`.
 3. Resolve full cgroup path: `/sys/fs/cgroup/<path>`.
-4. Find disk major:minor: iterate `/sys/block/*/dev` to match the device backing
-   `/var/lib/libvirt/images/` (read from `virDomain.XMLDesc()` to get the source file,
-   then `os.stat(...).st_dev` → `os.major/minor`).
+4. Find disk major:minor: parse `virDomain.XMLDesc()` for the first
+   `<disk device='disk'>/<source file='...'>`, then `os.stat(source).st_dev`
+   → `(major, minor)`. Because `st_dev` may refer to a partition, walk
+   `/sys/dev/block/<maj>:<min>` via `os.path.realpath` and read the parent
+   directory's `dev` file to resolve the whole-disk `major:minor`
+   (cgroup v2 `io.max` is enforced only at the request_queue, which exists
+   on the whole disk, not on partitions).
 5. Write `{major}:{minor} rbps={bandwidth_bps} wbps={bandwidth_bps}` to
    `<cgroup>/io.max`.
 
@@ -102,11 +106,13 @@ sudo env PATH=$PATH uv run kvmchaos inject disk.latency server1 --bandwidth 2 --
 - `inject` writes correct `rbps`/`wbps` to `io.max` (mock file I/O, `/proc` read,
   `/var/run/libvirt/qemu/<vm>.pid`, `os.stat`, XML desc)
 - `inject` raises if PID file missing
-- `inject` raises if disk device not found in `/sys/block`
+- `inject` raises if no `<disk device='disk'>` source found in domain XML
 - `verify` passes when limit matches
 - `verify` raises when limit absent or wrong
 - `revert` writes `max` to `io.max`
 - `DiskLatencyFault(bandwidth_bps=2_000_000)` stores value correctly
+- `_whole_disk` resolves a partition `major:minor` to the parent disk
+- `_whole_disk` returns input unchanged for a whole disk or missing sysfs
 
 ### `tests/test_fault_local_only.py`
 

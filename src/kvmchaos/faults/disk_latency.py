@@ -103,8 +103,11 @@ def _qemu_pid(vm_name: str) -> int:
 def _io_max_path(vm_name: str) -> Path:
     """Resolve the absolute path to the cgroup io.max file for a QEMU process.
 
-    Reads ``/proc/<pid>/cgroup`` to find the cgroups v2 path, then constructs
-    the absolute path under ``/sys/fs/cgroup``.
+    The PID's immediate cgroup (e.g. ``.../libvirt/emulator``) often does not
+    have the ``io`` controller delegated — libvirt enables ``io`` only at the
+    ``.../libvirt`` or ``.../scope`` level. This function walks up from the
+    PID's cgroup to the nearest ancestor whose ``cgroup.controllers`` contains
+    ``io``. Throttles set on a parent cgroup apply to all descendant processes.
 
     Args:
         vm_name: libvirt domain name.
@@ -114,21 +117,56 @@ def _io_max_path(vm_name: str) -> Path:
 
     Raises:
         FileNotFoundError: If the PID file does not exist.
-        RuntimeError: If no cgroups v2 entry is found in the process cgroup file.
+        RuntimeError: If no cgroups v2 entry is found, or no ancestor has the
+            io controller enabled.
     """
     pid = _qemu_pid(vm_name)
     for line in Path(f"/proc/{pid}/cgroup").read_text().splitlines():
         if line.startswith("0::"):
             rel = line[3:].lstrip("/")  # Path("/x") / "/abs" silently drops "/x" in Python
-            return Path("/sys/fs/cgroup") / rel / "io.max"
+            return _find_io_cgroup(Path("/sys/fs/cgroup") / rel) / "io.max"
     raise RuntimeError(f"cgroups v2 hierarchy not found in /proc/{pid}/cgroup")
 
 
-def _disk_dev(domain: libvirt.virDomain) -> tuple[int, int]:
-    """Return (major, minor) of the filesystem device holding the VM's first disk.
+def _find_io_cgroup(start: Path) -> Path:
+    """Walk up from ``start`` to the nearest cgroup with the io controller.
 
-    Parses the domain XML to find the first ``<disk device='disk'>`` source file,
-    then calls ``os.stat`` to get the device numbers of the filesystem it lives on.
+    Args:
+        start: A cgroup v2 directory (or deeper leaf).
+
+    Returns:
+        Absolute ``Path`` of the nearest ancestor (including ``start`` itself)
+        whose ``cgroup.controllers`` file lists ``io``.
+
+    Raises:
+        RuntimeError: If no ancestor with io in its controllers is found
+            before leaving the cgroup hierarchy.
+    """
+    current = start
+    while True:
+        controllers = current / "cgroup.controllers"
+        if not controllers.is_file():
+            break
+        if "io" in controllers.read_text().split():
+            return current
+        if current.parent == current:
+            break
+        current = current.parent
+    raise RuntimeError(f"no ancestor of {start} has io controller enabled")
+
+
+def _disk_dev(domain: libvirt.virDomain) -> tuple[int, int]:
+    """Return (major, minor) of the whole block device backing the VM's disk.
+
+    Parses the domain XML to find the first ``<disk device='disk'>`` source
+    file, uses ``/proc/self/mountinfo`` to map that path to its backing block
+    device (handling btrfs/xfs/ext4 on partitions, LVM, etc.), stats the block
+    device to get its major:minor, then walks up to the whole disk.
+
+    Going through ``mountinfo`` is required because ``os.stat(file).st_dev``
+    returns an anonymous device number for filesystems that synthesize one
+    (notably btrfs subvolumes, which report major 0), and those anonymous
+    numbers are rejected by cgroup v2 ``io.max`` with ``ENODEV``.
 
     Args:
         domain: A live libvirt domain handle.
@@ -137,7 +175,8 @@ def _disk_dev(domain: libvirt.virDomain) -> tuple[int, int]:
         Tuple of (major, minor) integers for use in cgroup io.max entries.
 
     Raises:
-        RuntimeError: If no disk source file is found in the domain XML.
+        RuntimeError: If no disk source is found, or the backing device
+            cannot be resolved to a real block device.
 
     Note:
         Assumes the image file resides on a single block device. LVM volumes,
@@ -150,5 +189,80 @@ def _disk_dev(domain: libvirt.virDomain) -> tuple[int, int]:
     source_file = elem.get("file")
     if not source_file:
         raise RuntimeError(f"Disk source has no file attribute for {domain.name()}")
-    st = os.stat(source_file)
-    return os.major(st.st_dev), os.minor(st.st_dev)
+    blk = _backing_block_device(Path(source_file))
+    st = os.stat(blk)
+    return _whole_disk(os.major(st.st_rdev), os.minor(st.st_rdev))
+
+
+def _backing_block_device(path: Path) -> Path:
+    """Return the ``/dev/...`` block device that backs the filesystem of ``path``.
+
+    Parses ``/proc/self/mountinfo`` and picks the entry whose mount point is
+    the longest prefix of ``path``. Works for plain partitions, LVM, dm-crypt,
+    and btrfs (where ``os.stat`` reports an anonymous ``st_dev``).
+
+    Args:
+        path: Absolute path to a file or directory on a mounted filesystem.
+
+    Returns:
+        ``Path`` to the block device (e.g. ``/dev/nvme0n1p6``).
+
+    Raises:
+        RuntimeError: If no mount entry covers ``path``, or the resolved
+            source is not a ``/dev/...`` block device (e.g. tmpfs, overlay).
+    """
+    target = str(path.resolve())
+    best_mount = ""
+    best_source = ""
+    for line in Path("/proc/self/mountinfo").read_text().splitlines():
+        # mountinfo fields: id parent major:minor root mnt_point opts ... - fs source fs_opts
+        left, sep, right = line.partition(" - ")
+        if not sep:
+            continue
+        left_fields = left.split()
+        right_fields = right.split()
+        if len(left_fields) < 5 or len(right_fields) < 2:
+            continue
+        mount_point = left_fields[4]
+        source = right_fields[1]
+        covered = target == mount_point or target.startswith(mount_point.rstrip("/") + "/")
+        if covered and len(mount_point) > len(best_mount):
+            best_mount = mount_point
+            best_source = source
+    if not best_source.startswith("/dev/"):
+        raise RuntimeError(
+            f"cannot resolve {path} to a block device (mountinfo source: {best_source!r})"
+        )
+    return Path(best_source)
+
+
+def _whole_disk(major: int, minor: int) -> tuple[int, int]:
+    """Resolve a (possibly partition) device to its whole-disk (major, minor).
+
+    cgroup v2 ``io.max`` is enforced at the request_queue level, which exists
+    only on whole disks. Writing a partition's major:minor is silently ignored
+    on most kernels, so partitions must be walked up to their parent disk.
+
+    Args:
+        major: Device major number (may be a partition).
+        minor: Device minor number.
+
+    Returns:
+        Tuple of (major, minor) for the whole disk. If the input is already
+        a whole disk, returns it unchanged. If ``/sys`` entries are missing
+        (non-Linux or unusual block device), returns the input unchanged.
+    """
+    sys_link = Path(f"/sys/dev/block/{major}:{minor}")
+    try:
+        real = Path(os.path.realpath(sys_link))
+    except OSError:
+        return major, minor
+    parent_dev = real.parent / "dev"
+    if not parent_dev.is_file():
+        return major, minor
+    try:
+        text = parent_dev.read_text().strip()
+        pmaj_s, pmin_s = text.split(":", 1)
+        return int(pmaj_s), int(pmin_s)
+    except OSError, ValueError:
+        return major, minor

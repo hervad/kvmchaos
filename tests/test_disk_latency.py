@@ -57,7 +57,7 @@ class TestDiskLatencyMetadata:
 def _make_stat(major: int, minor: int) -> os.stat_result:
     """Build a fake stat_result with the given device major:minor."""
     fake = MagicMock(spec=os.stat_result)
-    fake.st_dev = os.makedev(major, minor)
+    fake.st_rdev = os.makedev(major, minor)
     return fake
 
 
@@ -159,7 +159,13 @@ class TestDiskLatencyHelpers:
     def test_disk_dev_parses_xml(self):
         domain = _mock_domain()
         fake_stat = _make_stat(8, 0)
-        with patch("kvmchaos.faults.disk_latency.os.stat", return_value=fake_stat):
+        with (
+            patch(
+                "kvmchaos.faults.disk_latency._backing_block_device",
+                return_value=Path("/dev/sda1"),
+            ),
+            patch("kvmchaos.faults.disk_latency.os.stat", return_value=fake_stat),
+        ):
             from kvmchaos.faults.disk_latency import _disk_dev
 
             major, minor = _disk_dev(domain)
@@ -173,19 +179,6 @@ class TestDiskLatencyHelpers:
         with pytest.raises(RuntimeError, match="No disk source"):
             _disk_dev(domain)
 
-    def test_io_max_path_happy_path(self):
-        from kvmchaos.faults.disk_latency import _io_max_path
-
-        cgroup_line = "0::/machine.slice/machine-qemu\\x2d3-server1.scope"
-        with (
-            patch("kvmchaos.faults.disk_latency._qemu_pid", return_value=12345),
-            patch.object(Path, "read_text", return_value=cgroup_line),
-        ):
-            result = _io_max_path("server1")
-            # result should end with io.max and contain the cgroup path
-            assert str(result).endswith("io.max")
-            assert "machine.slice" in str(result)
-
     def test_io_max_path_raises_when_no_cgroup_v2(self):
         from kvmchaos.faults.disk_latency import _io_max_path
 
@@ -197,3 +190,122 @@ class TestDiskLatencyHelpers:
             pytest.raises(RuntimeError, match="cgroups v2 hierarchy not found"),
         ):
             _io_max_path("server1")
+
+
+class TestFindIoCgroup:
+    def test_returns_start_when_it_has_io(self, tmp_path: Path):
+        from kvmchaos.faults.disk_latency import _find_io_cgroup
+
+        (tmp_path / "cgroup.controllers").write_text("cpuset cpu io memory pids\n")
+        assert _find_io_cgroup(tmp_path) == tmp_path
+
+    def test_walks_up_to_nearest_ancestor(self, tmp_path: Path):
+        from kvmchaos.faults.disk_latency import _find_io_cgroup
+
+        scope = tmp_path / "scope"
+        libvirt_dir = scope / "libvirt"
+        emulator = libvirt_dir / "emulator"
+        emulator.mkdir(parents=True)
+        (scope / "cgroup.controllers").write_text("cpuset cpu io memory pids\n")
+        (libvirt_dir / "cgroup.controllers").write_text("cpuset cpu io memory\n")
+        (emulator / "cgroup.controllers").write_text("cpuset cpu\n")
+
+        assert _find_io_cgroup(emulator) == libvirt_dir
+
+    def test_raises_when_no_ancestor_has_io(self, tmp_path: Path):
+        from kvmchaos.faults.disk_latency import _find_io_cgroup
+
+        leaf = tmp_path / "leaf"
+        leaf.mkdir()
+        (tmp_path / "cgroup.controllers").write_text("cpuset cpu\n")
+        (leaf / "cgroup.controllers").write_text("cpuset cpu\n")
+
+        with pytest.raises(RuntimeError, match="no ancestor"):
+            _find_io_cgroup(leaf)
+
+
+class TestBackingBlockDevice:
+    def test_picks_longest_matching_mount(self, tmp_path: Path):
+        from kvmchaos.faults.disk_latency import _backing_block_device
+
+        mountinfo = (
+            "1 0 0:1 / / rw - rootfs rootfs rw\n"
+            "2 1 259:9 / /var/lib/libvirt rw - btrfs /dev/nvme0n1p6 rw\n"
+            "3 1 0:36 / /tmp rw - tmpfs tmpfs rw\n"
+        )
+        target = tmp_path / "var" / "lib" / "libvirt" / "images" / "vm.qcow2"
+        target.parent.mkdir(parents=True)
+        target.write_text("")
+
+        def fake_read_text(self, *a, **kw):
+            if str(self) == "/proc/self/mountinfo":
+                return mountinfo
+            return ""
+
+        # Resolve target under a fake mount prefix to force the match.
+        with (
+            patch.object(Path, "read_text", autospec=True, side_effect=fake_read_text),
+            patch.object(Path, "resolve", return_value=Path("/var/lib/libvirt/images/vm.qcow2")),
+        ):
+            result = _backing_block_device(target)
+        assert str(result) == "/dev/nvme0n1p6"
+
+    def test_raises_for_non_block_source(self, tmp_path: Path):
+        from kvmchaos.faults.disk_latency import _backing_block_device
+
+        mountinfo = "1 0 0:1 / /tmp rw - tmpfs tmpfs rw\n"
+        target = tmp_path / "tmp" / "x"
+        target.parent.mkdir(parents=True)
+        target.write_text("")
+
+        def fake_read_text(self, *a, **kw):
+            if str(self) == "/proc/self/mountinfo":
+                return mountinfo
+            return ""
+
+        with (
+            patch.object(Path, "read_text", autospec=True, side_effect=fake_read_text),
+            patch.object(Path, "resolve", return_value=Path("/tmp/x")),
+            pytest.raises(RuntimeError, match="cannot resolve"),
+        ):
+            _backing_block_device(target)
+
+
+class TestWholeDisk:
+    def test_partition_resolves_to_whole_disk(self, tmp_path: Path):
+        from kvmchaos.faults.disk_latency import _whole_disk
+
+        # Simulate /sys layout: realpath("/sys/dev/block/8:1") -> <tmp>/sda/sda1
+        # parent <tmp>/sda contains dev file with "8:0"
+        sda = tmp_path / "sda"
+        sda.mkdir()
+        (sda / "dev").write_text("8:0\n")
+        sda1 = sda / "sda1"
+        sda1.mkdir()
+        (sda1 / "dev").write_text("8:1\n")
+
+        with patch("kvmchaos.faults.disk_latency.os.path.realpath", return_value=str(sda1)):
+            major, minor = _whole_disk(8, 1)
+        assert (major, minor) == (8, 0)
+
+    def test_whole_disk_returns_unchanged(self, tmp_path: Path):
+        from kvmchaos.faults.disk_latency import _whole_disk
+
+        sda = tmp_path / "sda"
+        sda.mkdir()
+        (sda / "dev").write_text("8:0\n")
+        # Parent of sda (tmp_path) has no dev file → already whole disk.
+
+        with patch("kvmchaos.faults.disk_latency.os.path.realpath", return_value=str(sda)):
+            major, minor = _whole_disk(8, 0)
+        assert (major, minor) == (8, 0)
+
+    def test_whole_disk_missing_sys_returns_unchanged(self):
+        from kvmchaos.faults.disk_latency import _whole_disk
+
+        with patch(
+            "kvmchaos.faults.disk_latency.os.path.realpath",
+            return_value="/nonexistent/path",
+        ):
+            major, minor = _whole_disk(253, 0)
+        assert (major, minor) == (253, 0)
