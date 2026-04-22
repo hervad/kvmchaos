@@ -8,6 +8,7 @@ and adding one entry to `FAULTS`. No decorators or entry-point magic.
 from __future__ import annotations
 
 from kvmchaos.faults.base import Fault
+from kvmchaos.faults.net_latency import NetLatencyFault
 from kvmchaos.faults.vm_freeze import VmFreezeFault
 from kvmchaos.faults.vm_kill import VmKillFault
 from kvmchaos.faults.vm_pause import VmPauseFault
@@ -18,4 +19,5 @@ FAULTS: dict[str, Fault] = {
     VmKillFault.name: VmKillFault(),
     VmFreezeFault.name: VmFreezeFault(),
     VmStarveFault.name: VmStarveFault(),
+    NetLatencyFault.name: NetLatencyFault(),
 }
