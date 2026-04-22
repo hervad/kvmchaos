@@ -126,7 +126,7 @@ class TestDiskLatencyVerify:
         with (
             patch("kvmchaos.faults.disk_latency._io_max_path", return_value=io_max),
             patch("kvmchaos.faults.disk_latency._disk_dev", return_value=(8, 0)),
-            pytest.raises(RuntimeError),
+            pytest.raises(RuntimeError, match="not in effect"),
         ):
             fault.verify(domain)
 
@@ -148,13 +148,11 @@ class TestDiskLatencyRevert:
 
 
 class TestDiskLatencyHelpers:
-    def test_qemu_pid_raises_when_not_running(self, tmp_path: Path):
-        with patch(
-            "kvmchaos.faults.disk_latency.Path",
-            side_effect=FileNotFoundError("no pid file"),
-        ):
-            from kvmchaos.faults.disk_latency import _qemu_pid
+    def test_qemu_pid_raises_when_not_running(self):
+        from kvmchaos.faults.disk_latency import _qemu_pid
 
+        with patch("kvmchaos.faults.disk_latency.Path") as mock_path:
+            mock_path.return_value.read_text.side_effect = FileNotFoundError("no pid file")
             with pytest.raises(FileNotFoundError):
                 _qemu_pid("missing-vm")
 
@@ -174,3 +172,28 @@ class TestDiskLatencyHelpers:
 
         with pytest.raises(RuntimeError, match="No disk source"):
             _disk_dev(domain)
+
+    def test_io_max_path_happy_path(self):
+        from kvmchaos.faults.disk_latency import _io_max_path
+
+        cgroup_line = "0::/machine.slice/machine-qemu\\x2d3-server1.scope"
+        with (
+            patch("kvmchaos.faults.disk_latency._qemu_pid", return_value=12345),
+            patch.object(Path, "read_text", return_value=cgroup_line),
+        ):
+            result = _io_max_path("server1")
+            # result should end with io.max and contain the cgroup path
+            assert str(result).endswith("io.max")
+            assert "machine.slice" in str(result)
+
+    def test_io_max_path_raises_when_no_cgroup_v2(self):
+        from kvmchaos.faults.disk_latency import _io_max_path
+
+        # cgroup v1 format has no "0::" line
+        cgroup_v1 = "1:cpu:/system.slice\n2:memory:/system.slice\n"
+        with (
+            patch("kvmchaos.faults.disk_latency._qemu_pid", return_value=12345),
+            patch.object(Path, "read_text", return_value=cgroup_v1),
+            pytest.raises(RuntimeError, match="cgroups v2 hierarchy not found"),
+        ):
+            _io_max_path("server1")

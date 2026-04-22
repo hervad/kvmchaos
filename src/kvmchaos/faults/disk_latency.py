@@ -119,7 +119,7 @@ def _io_max_path(vm_name: str) -> Path:
     pid = _qemu_pid(vm_name)
     for line in Path(f"/proc/{pid}/cgroup").read_text().splitlines():
         if line.startswith("0::"):
-            rel = line[3:].lstrip("/")
+            rel = line[3:].lstrip("/")  # Path("/x") / "/abs" silently drops "/x" in Python
             return Path("/sys/fs/cgroup") / rel / "io.max"
     raise RuntimeError(f"cgroups v2 hierarchy not found in /proc/{pid}/cgroup")
 
@@ -138,6 +138,10 @@ def _disk_dev(domain: libvirt.virDomain) -> tuple[int, int]:
 
     Raises:
         RuntimeError: If no disk source file is found in the domain XML.
+
+    Note:
+        Assumes the image file resides on a single block device. LVM volumes,
+        bcache, and btrfs RAID configurations are not supported.
     """
     root = ET.fromstring(domain.XMLDesc())
     elem = root.find(".//disk[@device='disk']/source")
