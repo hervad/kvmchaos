@@ -22,6 +22,7 @@ import typer
 from kvmchaos import __version__
 from kvmchaos.eventlog import configure_logging, log_event
 from kvmchaos.faults import FAULTS
+from kvmchaos.faults.disk_latency import DiskLatencyFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
 from kvmchaos.runrecord import default_runs_dir, write_run_record
 from kvmchaos.safety import confirm
@@ -135,6 +136,13 @@ def inject_cmd(
     duration: int = typer.Option(
         20, "--duration", "-d", help="Seconds to hold the fault before reverting.", min=0
     ),
+    bandwidth: int = typer.Option(
+        1,
+        "--bandwidth",
+        "-b",
+        help="Disk throttle limit in MB/s (disk.latency only).",
+        min=1,
+    ),
 ) -> None:
     """Inject a fault into a VM, verify it took effect, then revert.
 
@@ -147,6 +155,7 @@ def inject_cmd(
         assume_yes: If True, skip the confirmation prompt.
         dry_run: If True, validate args and print plan without touching libvirt state.
         duration: Seconds to hold the fault before reverting.
+        bandwidth: Disk I/O throttle in MB/s, used only by disk.latency.
     """
     configure_logging()
 
@@ -157,6 +166,8 @@ def inject_cmd(
         )
         raise typer.Exit(code=2)
     fault = FAULTS[fault_name]
+    if fault_name == "disk.latency":
+        fault = DiskLatencyFault(bandwidth_bps=bandwidth * 1_000_000)
 
     raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
     resolved_uri = resolve_uri(raw_uri)

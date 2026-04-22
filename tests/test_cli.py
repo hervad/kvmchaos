@@ -227,3 +227,43 @@ class TestRunRecord:
         assert data["outcome"] == "fail"
         assert data["steps"][1]["result"] == "fail"
         assert len(data["steps"]) == 3  # inject ok, verify fail, revert attempted
+
+
+class TestBandwidthFlag:
+    def test_disk_latency_appears_in_list_faults(self) -> None:
+        result = runner.invoke(app, ["list-faults"])
+        assert result.exit_code == 0
+        assert "disk.latency" in result.stdout
+
+    def test_bandwidth_flag_accepted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from kvmchaos.faults.disk_latency import DiskLatencyFault
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+            return {"action": action, "result": "skipped", "duration_ms": 0}
+
+        with (
+            patch("kvmchaos.cli._run_step", side_effect=capturing_run_step),
+            patch("kvmchaos.cli.FAULTS", {"disk.latency": DiskLatencyFault()}),
+            patch("kvmchaos.cli.connect") as mock_conn,
+        ):
+            mock_domain = MagicMock()
+            mock_conn.return_value.__enter__.return_value.lookupByName.return_value = mock_domain
+            result = runner.invoke(
+                app,
+                [
+                    "--connect",
+                    "test:///default",
+                    "inject",
+                    "--yes",
+                    "--dry-run",
+                    "--bandwidth",
+                    "2",
+                    "disk.latency",
+                    "test",
+                ],
+            )
+        assert result.exit_code == 0

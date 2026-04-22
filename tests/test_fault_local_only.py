@@ -25,3 +25,10 @@ def test_net_latency_is_local_only() -> None:
 @pytest.mark.parametrize("cls", [VmPauseFault, VmKillFault, VmFreezeFault, VmStarveFault])
 def test_vm_faults_are_not_local_only(cls: type) -> None:
     assert cls.local_only is False
+
+
+class TestLocalOnlyAttribute:
+    def test_disk_latency_is_local_only(self) -> None:
+        from kvmchaos.faults import FAULTS
+
+        assert FAULTS["disk.latency"].local_only is True
