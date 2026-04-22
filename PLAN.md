@@ -27,6 +27,18 @@ See `docs/superpowers/specs/2026-04-20-kvmchaos-v0.1-design.md` for the spec.
 - [x] `pytest` passes with coverage ≥85%
 - [x] `ruff check`, `ruff format --check` clean
 
+## Lab Validation (required after every version)
+
+After automated tests pass, manually test against the lab environment:
+**Host:** Fedora 43 KVM · **Guest:** RHEL 9.7 VM
+
+- [ ] `kvmchaos list-vms` shows the RHEL 9.7 VM
+- [ ] `kvmchaos inject <fault> <vm> --dry-run` — no prompt, prints plan, no log entry written
+- [ ] `kvmchaos inject <fault> <vm>` — full inject/verify/revert cycle completes, JSONL log entry written
+- [ ] VM is reachable over SSH after revert (confirm guest recovered)
+
+Run for each new or modified fault. Do not tick acceptance boxes until lab validation passes.
+
 ## Backlog (post-v0.1, not scheduled)
 
 - `net.latency` via `tc` (introduces subprocess + privilege)

@@ -143,11 +143,12 @@ def inject_cmd(
             typer.echo(f"VM '{vm}' not found: {exc}", err=True)
             raise typer.Exit(code=2) from exc
 
-        label = "DESTRUCTIVE" if fault.destructive else "reversible"
-        prompt = f"About to inject '{fault_name}' on VM '{vm}' ({label}). Continue?"
-        if not confirm(prompt, assume_yes=assume_yes):
-            typer.echo("Aborted.")
-            raise typer.Exit(code=1)
+        if not dry_run:
+            label = "DESTRUCTIVE" if fault.destructive else "reversible"
+            prompt = f"About to inject '{fault_name}' on VM '{vm}' ({label}). Continue?"
+            if not confirm(prompt, assume_yes=assume_yes):
+                typer.echo("Aborted.")
+                raise typer.Exit(code=1)
 
         _run_step(
             fault.inject, domain, action="inject", fault_name=fault_name, vm=vm, dry_run=dry_run

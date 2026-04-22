@@ -42,10 +42,11 @@ class TestDryRunValidation:
         )
         assert result.exit_code == 2
 
-    def test_dry_run_aborted_by_user_exits_1(self):
+    def test_dry_run_skips_confirmation_prompt(self):
+        # --dry-run must never prompt; no input supplied and it should still exit 0.
         result = runner.invoke(
             app,
             [*_CONNECT, "inject", "--dry-run", "vm.pause", "test"],
-            input="n\n",
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
+        assert "Continue?" not in result.output
