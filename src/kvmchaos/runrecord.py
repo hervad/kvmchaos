@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -39,7 +39,7 @@ def write_run_record(record: dict[str, object], runs_dir: Path) -> Path:
         Absolute path of the written JSON file.
     """
     runs_dir.mkdir(parents=True, exist_ok=True)
-    dt = datetime.fromisoformat(str(record["started_at"]))
+    dt = datetime.fromisoformat(str(record["started_at"])).astimezone(UTC)
     compact = dt.strftime("%Y%m%dT%H%M%SZ")
     fault_slug = str(record["fault"]).replace(".", "-")
     filename = f"{compact}-{fault_slug}-{record['vm']}.json"

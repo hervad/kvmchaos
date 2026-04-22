@@ -192,3 +192,38 @@ class TestRunRecord:
         data = json.loads(records[0].read_text())
         assert data["outcome"] == "fail"
         assert data["steps"][0]["result"] == "fail"
+
+    def test_record_written_on_verify_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from unittest.mock import MagicMock, patch
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        mock_fault = MagicMock()
+        mock_fault.description = "test fault"
+        mock_fault.destructive = False
+        mock_fault.local_only = False
+        mock_fault.verify.side_effect = RuntimeError("verify failed")
+
+        with patch("kvmchaos.cli.FAULTS", {"vm.pause": mock_fault}):
+            result = runner.invoke(
+                app,
+                [
+                    "--connect",
+                    "test:///default",
+                    "inject",
+                    "--yes",
+                    "--duration",
+                    "0",
+                    "vm.pause",
+                    "test",
+                ],
+            )
+        assert result.exit_code == 1
+        runs_dir = tmp_path / "kvmchaos" / "runs"
+        records = list(runs_dir.glob("*.json"))
+        assert len(records) == 1
+        data = json.loads(records[0].read_text())
+        assert data["outcome"] == "fail"
+        assert data["steps"][1]["result"] == "fail"
+        assert len(data["steps"]) == 3  # inject ok, verify fail, revert attempted
