@@ -492,3 +492,10 @@ class TestNetPacketLossCli:
                 ],
             )
         assert result.exit_code == 0
+
+
+class TestNetPartitionCli:
+    def test_net_partition_appears_in_list_faults(self) -> None:
+        result = runner.invoke(app, ["list-faults"])
+        assert result.exit_code == 0
+        assert "net.partition" in result.stdout

@@ -13,6 +13,7 @@ from kvmchaos.faults.disk_fill import DiskFillFault
 from kvmchaos.faults.disk_latency import DiskLatencyFault
 from kvmchaos.faults.net_latency import NetLatencyFault
 from kvmchaos.faults.net_packet_loss import NetPacketLossFault
+from kvmchaos.faults.net_partition import NetPartitionFault
 from kvmchaos.faults.vm_freeze import VmFreezeFault
 from kvmchaos.faults.vm_kill import VmKillFault
 from kvmchaos.faults.vm_pause import VmPauseFault
@@ -28,4 +29,5 @@ FAULTS: dict[str, Fault] = {
     DiskFillFault.name: DiskFillFault(),
     NetPacketLossFault.name: NetPacketLossFault(),
     ClockSkewFault.name: ClockSkewFault(),
+    NetPartitionFault.name: NetPartitionFault(),
 }

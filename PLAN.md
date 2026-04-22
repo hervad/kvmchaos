@@ -146,7 +146,17 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 - [x] `ruff check`, `ruff format --check` clean
 - [x] Lab validation on Fedora 43 KVM host (2026-04-23) — clock jumped 01:37→02:38, restored to 01:38 on revert
 
-## Backlog (post-v0.10, not scheduled)
+## Acceptance (v0.11)
+
+- [ ] `net.partition` registered in `list-faults` with `local_only = True`
+- [ ] `kvmchaos inject net.partition <vm> --yes` drops all traffic on first vNIC via nftables
+- [ ] Revert deletes the `inet kvmchaos-<dev>` table; idempotent if already absent
+- [ ] Does not modify firewalld rules
+- [ ] `pytest` passes with coverage >=85%
+- [ ] `ruff check`, `ruff format --check` clean
+- [ ] Lab validation on Fedora 43 KVM host
+
+## Backlog (post-v0.11, not scheduled)
 
 - `disk.corrupt` — targeted block-level corruption (high risk, needs design)
 - `migration.abort` — deferred; requires a second KVM host (or a nested-KVM
