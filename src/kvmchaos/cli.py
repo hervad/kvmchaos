@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 import urllib.parse
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 import libvirt
 import typer
@@ -22,6 +23,7 @@ from kvmchaos import __version__
 from kvmchaos.eventlog import configure_logging, log_event
 from kvmchaos.faults import FAULTS
 from kvmchaos.libvirt_conn import connect, resolve_uri
+from kvmchaos.runrecord import default_runs_dir, write_run_record
 from kvmchaos.safety import confirm
 
 app = typer.Typer(
@@ -180,25 +182,39 @@ def inject_cmd(
                 typer.echo("Aborted.")
                 raise typer.Exit(code=1)
 
-        _run_step(
+        started_at = datetime.now(UTC)
+        steps: list[dict[str, object]] = []
+
+        inject_step = _run_step(
             fault.inject, domain, action="inject", fault_name=fault_name, vm=vm, dry_run=dry_run
         )
-
-        try:
-            _run_step(
-                fault.verify, domain, action="verify", fault_name=fault_name, vm=vm, dry_run=dry_run
+        steps.append(inject_step)
+        if inject_step["result"] == "fail":
+            ended_at = datetime.now(UTC)
+            _write_and_print_record(
+                fault_name, vm, resolved_uri, dry_run, started_at, ended_at, steps
             )
-        except Exception:
-            _run_step(
+            raise typer.Exit(code=1)
+
+        verify_step = _run_step(
+            fault.verify, domain, action="verify", fault_name=fault_name, vm=vm, dry_run=dry_run
+        )
+        steps.append(verify_step)
+        if verify_step["result"] == "fail":
+            revert_step = _run_step(
                 fault.revert,
                 domain,
                 action="revert",
                 fault_name=fault_name,
                 vm=vm,
-                swallow=True,
                 dry_run=dry_run,
             )
-            raise typer.Exit(code=1) from None
+            steps.append(revert_step)
+            ended_at = datetime.now(UTC)
+            _write_and_print_record(
+                fault_name, vm, resolved_uri, dry_run, started_at, ended_at, steps
+            )
+            raise typer.Exit(code=1)
 
         if dry_run:
             typer.echo(f"[dry-run] would: hold {fault_name} on {vm} for {duration}s")
@@ -206,9 +222,13 @@ def inject_cmd(
             typer.echo(f"Holding '{fault_name}' on '{vm}' for {duration}s …")
             time.sleep(duration)
 
-        _run_step(
+        revert_step = _run_step(
             fault.revert, domain, action="revert", fault_name=fault_name, vm=vm, dry_run=dry_run
         )
+        steps.append(revert_step)
+
+        ended_at = datetime.now(UTC)
+        _write_and_print_record(fault_name, vm, resolved_uri, dry_run, started_at, ended_at, steps)
 
 
 def _run_step(
@@ -218,47 +238,79 @@ def _run_step(
     action: str,
     fault_name: str,
     vm: str,
-    swallow: bool = False,
     dry_run: bool = False,
-) -> None:
+) -> dict[str, object]:
     """Execute one fault step (inject, verify, or revert) and log the outcome.
 
     Args:
         func: Callable to invoke — one of ``fault.inject``, ``.verify``, ``.revert``.
         domain: Live libvirt domain handle.
-        action: Event label for the log (``'inject'``, ``'verify'``, ``'revert'``).
+        action: Event label (``'inject'``, ``'verify'``, or ``'revert'``).
         fault_name: Fault registry key, included in the log event.
         vm: VM name, included in the log event.
-        swallow: If True, log the error and return instead of re-raising.
         dry_run: If True, print a plan line and return without calling func or logging.
+
+    Returns:
+        Dict with ``action``, ``result`` (``'ok'``, ``'fail'``, or ``'skipped'``),
+        ``duration_ms``, and optional ``error``.
     """
     if dry_run:
         typer.echo(f"[dry-run] would: {action} {fault_name} on {vm}")
-        return
+        return {"action": action, "result": "skipped", "duration_ms": 0}
     t0 = time.monotonic()
     try:
         func(domain)
     except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
         log_event(
             action=action,
             fault=fault_name,
             vm=vm,
             result="fail",
-            duration_ms=int((time.monotonic() - t0) * 1000),
+            duration_ms=duration_ms,
             error=str(exc),
         )
-        if swallow:
-            typer.echo(f"{action} error (best-effort): {exc}", err=True)
-            return
-        typer.echo(f"{action} failed: {exc}", err=True)
-        raise
-    log_event(
-        action=action,
-        fault=fault_name,
-        vm=vm,
-        result="ok",
-        duration_ms=int((time.monotonic() - t0) * 1000),
-    )
+        typer.echo(f"{action} error: {exc}", err=True)
+        return {"action": action, "result": "fail", "duration_ms": duration_ms, "error": str(exc)}
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    log_event(action=action, fault=fault_name, vm=vm, result="ok", duration_ms=duration_ms)
+    return {"action": action, "result": "ok", "duration_ms": duration_ms}
+
+
+def _write_and_print_record(
+    fault_name: str,
+    vm: str,
+    uri: str,
+    dry_run: bool,
+    started_at: datetime,
+    ended_at: datetime,
+    steps: list[dict[str, object]],
+) -> None:
+    """Build the run record dict, write it to disk, and print its path.
+
+    Args:
+        fault_name: Name of the fault that was injected.
+        vm: Target VM name.
+        uri: Resolved libvirt URI used for the run.
+        dry_run: True if the run was a dry-run.
+        started_at: UTC datetime when inject_cmd began executing steps.
+        ended_at: UTC datetime when the final step completed.
+        steps: List of step result dicts from ``_run_step``.
+    """
+    outcome = "success" if all(s["result"] in ("ok", "skipped") for s in steps) else "fail"
+    record: dict[str, object] = {
+        "started_at": started_at.isoformat(timespec="seconds"),
+        "ended_at": ended_at.isoformat(timespec="seconds"),
+        "fault": fault_name,
+        "vm": vm,
+        "uri": uri,
+        "dry_run": dry_run,
+        "duration_s": int((ended_at - started_at).total_seconds()),
+        "outcome": outcome,
+        "steps": steps,
+    }
+    path = write_run_record(record, default_runs_dir())
+    typer.echo(f"Run record: {path}")
 
 
 def _state_name(state: int) -> str:

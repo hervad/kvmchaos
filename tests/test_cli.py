@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from kvmchaos import __version__
@@ -82,3 +83,78 @@ class TestInject:
             input="n\n",
         )
         assert result.exit_code == 1
+
+
+class TestRunRecord:
+    def test_record_written_on_success(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        result = runner.invoke(
+            app,
+            [
+                "--connect",
+                "test:///default",
+                "inject",
+                "--yes",
+                "--duration",
+                "0",
+                "vm.pause",
+                "test",
+            ],
+        )
+        assert result.exit_code == 0
+        runs_dir = tmp_path / "kvmchaos" / "runs"
+        records = list(runs_dir.glob("*.json"))
+        assert len(records) == 1
+        data = json.loads(records[0].read_text())
+        assert data["fault"] == "vm.pause"
+        assert data["vm"] == "test"
+        assert data["outcome"] == "success"
+        assert data["dry_run"] is False
+        assert [s["action"] for s in data["steps"]] == ["inject", "verify", "revert"]
+
+    def test_record_written_for_dry_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        result = runner.invoke(
+            app,
+            [
+                "--connect",
+                "test:///default",
+                "inject",
+                "--yes",
+                "--dry-run",
+                "vm.pause",
+                "test",
+            ],
+        )
+        assert result.exit_code == 0
+        runs_dir = tmp_path / "kvmchaos" / "runs"
+        records = list(runs_dir.glob("*.json"))
+        assert len(records) == 1
+        data = json.loads(records[0].read_text())
+        assert data["dry_run"] is True
+        assert all(s["result"] == "skipped" for s in data["steps"])
+        assert data["outcome"] == "success"
+
+    def test_record_path_printed_to_stdout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        result = runner.invoke(
+            app,
+            [
+                "--connect",
+                "test:///default",
+                "inject",
+                "--yes",
+                "--duration",
+                "0",
+                "vm.pause",
+                "test",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Run record:" in result.stdout
