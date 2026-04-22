@@ -43,15 +43,35 @@ After automated tests pass, manually test against the lab environment:
 
 Run for each new or modified fault. Do not tick acceptance boxes until lab validation passes.
 
+## Acceptance (v0.3)
+
+- [ ] `kvmchaos inject vm.pause <vm> --yes --duration 0` writes a `.json` file to `~/.local/state/kvmchaos/runs/`
+- [ ] `kvmchaos inject vm.pause <vm> --dry-run` writes a record with `dry_run: true` and all steps `skipped`
+- [ ] `kvmchaos inject net.latency <vm> --connect qemu+ssh://<remote>/system` exits 2 with local-only message
+- [ ] `kvmchaos inject vm.pause <vm> --connect qemu+ssh://localhost/system --yes --duration 0` completes successfully (requires `ssh-copy-id localhost`)
+- [ ] `pytest` passes with coverage ≥85%
+- [ ] `ruff check`, `ruff format --check` clean
+
+## Lab Validation (v0.3)
+
+After automated tests pass, manually test against the lab environment:
+**Host:** Fedora 43 KVM · **Guest:** RHEL 9.7 VM
+
+Pre-requisite: `ssh-copy-id localhost` on the KVM host (authorizes key for loopback SSH).
+
+- [ ] `kvmchaos --connect qemu+ssh://localhost/system list-vms` shows the RHEL 9.7 VM
+- [ ] `kvmchaos --connect qemu+ssh://localhost/system inject vm.pause server1 --yes --duration 5` completes; run record written to `~/.local/state/kvmchaos/runs/`
+- [ ] `cat` the run record — JSON parses, `outcome: success`, 3 steps all `ok`
+- [ ] `kvmchaos --connect qemu+ssh://localhost/system inject net.latency server1 --yes` exits 2 with `requires local execution` message
+- [ ] `kvmchaos inject vm.pause server1 --yes --dry-run` writes a record with `dry_run: true`
+
+Run for each new or modified feature. Do not tick acceptance boxes until lab validation passes.
+
 ## Backlog (post-v0.1, not scheduled)
 
-- `net.latency` via `tc` (introduces subprocess + privilege)
 - `disk.latency` via `dm-delay`
 - `migration.abort`
-- Structured JSON-per-run records
 - HTML report generator
-- Remote libvirt (`qemu+ssh://...`)
-- Pre-commit hooks, CI
 
 ## Decisions Log
 
