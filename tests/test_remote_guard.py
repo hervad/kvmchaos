@@ -60,17 +60,20 @@ class TestRemoteGuard:
 
     def test_non_local_only_fault_with_remote_uri_not_blocked(self) -> None:
         # vm.pause is not local_only — guard must not trigger.
-        # Connection will fail (can't reach 192.168.1.10 in tests) but
-        # the error must not be the guard message.
-        result = runner.invoke(
-            app,
-            [
-                "--connect",
-                "qemu+ssh://192.168.1.10/system",
-                "inject",
-                "--yes",
-                "vm.pause",
-                "server1",
-            ],
-        )
+        # Mock libvirt.open to avoid a real SSH connection timeout.
+        from unittest.mock import patch
+
+        with patch("kvmchaos.cli.connect") as mock_connect:
+            mock_connect.side_effect = Exception("connection refused")
+            result = runner.invoke(
+                app,
+                [
+                    "--connect",
+                    "qemu+ssh://192.168.1.10/system",
+                    "inject",
+                    "--yes",
+                    "vm.pause",
+                    "server1",
+                ],
+            )
         assert "requires local execution" not in result.stderr
