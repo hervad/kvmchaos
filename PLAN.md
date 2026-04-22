@@ -38,6 +38,7 @@ After automated tests pass, manually test against the lab environment:
 - [x] `vm.starve` — Mem dropped 3.6Gi → 583Mi, swap filled, restored after revert (2026-04-22)
 - [x] `vm.pause` — VM completely unresponsive during hold, resumes cleanly (2026-04-22)
 - [x] `vm.kill` — VM shuts off, stays down for duration, restarts on revert (2026-04-22)
+- [x] `net.latency` — 200ms one-way latency confirmed via ping from server2 (2026-04-22)
 - [x] VM reachable over SSH after every revert (2026-04-22)
 
 Run for each new or modified fault. Do not tick acceptance boxes until lab validation passes.
