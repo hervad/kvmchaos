@@ -135,7 +135,18 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 - [x] `ruff check`, `ruff format --check` clean
 - [x] Lab validation on Fedora 43 KVM host (2026-04-23) — 37-59% loss observed at 50% target (netem random model; variance expected on small samples)
 
-## Backlog (post-v0.9, not scheduled)
+## Acceptance (v0.10)
+
+- [ ] `clock.skew` registered in `list-faults` with `local_only = False`
+- [ ] `kvmchaos inject clock.skew <vm> --skew N` shifts guest clock by N seconds (negative = backward)
+- [ ] `--skew` defaults to 3600 (1 hour forward)
+- [ ] Revert resets guest clock to host wall clock time
+- [ ] Requires `qemu-guest-agent` running in the guest
+- [ ] `pytest` passes with coverage >=85%
+- [ ] `ruff check`, `ruff format --check` clean
+- [ ] Lab validation on Fedora 43 KVM host
+
+## Backlog (post-v0.10, not scheduled)
 
 - `disk.corrupt` — targeted block-level corruption (high risk, needs design)
 - `migration.abort` — deferred; requires a second KVM host (or a nested-KVM

@@ -8,6 +8,7 @@ and adding one entry to `FAULTS`. No decorators or entry-point magic.
 from __future__ import annotations
 
 from kvmchaos.faults.base import Fault
+from kvmchaos.faults.clock_skew import ClockSkewFault
 from kvmchaos.faults.disk_fill import DiskFillFault
 from kvmchaos.faults.disk_latency import DiskLatencyFault
 from kvmchaos.faults.net_latency import NetLatencyFault
@@ -26,4 +27,5 @@ FAULTS: dict[str, Fault] = {
     DiskLatencyFault.name: DiskLatencyFault(),
     DiskFillFault.name: DiskFillFault(),
     NetPacketLossFault.name: NetPacketLossFault(),
+    ClockSkewFault.name: ClockSkewFault(),
 }

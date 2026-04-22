@@ -414,6 +414,46 @@ class TestInterruptedInject:
         assert any(s["action"] == "revert" for s in data["steps"])
 
 
+class TestClockSkewCli:
+    def test_clock_skew_appears_in_list_faults(self) -> None:
+        result = runner.invoke(app, ["list-faults"])
+        assert result.exit_code == 0
+        assert "clock.skew" in result.stdout
+
+    def test_skew_flag_accepted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from kvmchaos.faults.clock_skew import ClockSkewFault
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+            return {"action": action, "result": "skipped", "duration_ms": 0}
+
+        with (
+            patch("kvmchaos.cli._run_step", side_effect=capturing_run_step),
+            patch("kvmchaos.cli.FAULTS", {"clock.skew": ClockSkewFault()}),
+            patch("kvmchaos.cli.connect") as mock_conn,
+        ):
+            mock_domain = MagicMock()
+            mock_conn.return_value.__enter__.return_value.lookupByName.return_value = mock_domain
+            result = runner.invoke(
+                app,
+                [
+                    "--connect",
+                    "test:///default",
+                    "inject",
+                    "--yes",
+                    "--dry-run",
+                    "--skew",
+                    "7200",
+                    "clock.skew",
+                    "test",
+                ],
+            )
+        assert result.exit_code == 0
+
+
 class TestNetPacketLossCli:
     def test_net_packet_loss_appears_in_list_faults(self) -> None:
         result = runner.invoke(app, ["list-faults"])

@@ -24,6 +24,7 @@ import typer
 from kvmchaos import __version__
 from kvmchaos.eventlog import configure_logging, log_event
 from kvmchaos.faults import FAULTS
+from kvmchaos.faults.clock_skew import ClockSkewFault
 from kvmchaos.faults.disk_fill import DiskFillFault
 from kvmchaos.faults.disk_latency import DiskLatencyFault
 from kvmchaos.faults.net_packet_loss import NetPacketLossFault
@@ -366,6 +367,11 @@ def inject_cmd(
         min=1,
         max=100,
     ),
+    skew: int = typer.Option(
+        3600,
+        "--skew",
+        help="Clock offset in seconds; negative shifts backward (clock.skew only).",
+    ),
 ) -> None:
     """Inject a fault into a VM, verify it took effect, then revert.
 
@@ -381,6 +387,7 @@ def inject_cmd(
         bandwidth: Disk I/O throttle in MB/s, used only by disk.latency.
         size: Fill size in MiB, used only by disk.fill.
         loss: Packet loss percentage, used only by net.packet-loss.
+        skew: Clock offset in seconds, used only by clock.skew.
     """
     configure_logging()
 
@@ -397,6 +404,8 @@ def inject_cmd(
         fault = DiskFillFault(fill_bytes=size * 1024 * 1024)
     elif fault_name == "net.packet-loss":
         fault = NetPacketLossFault(loss_percent=loss)
+    elif fault_name == "clock.skew":
+        fault = ClockSkewFault(skew_seconds=skew)
 
     raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
     resolved_uri = resolve_uri(raw_uri)
