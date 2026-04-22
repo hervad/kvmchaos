@@ -356,7 +356,7 @@ The class attribute block becomes:
 uv run pytest tests/test_fault_local_only.py -v
 ```
 
-Expected: 9 tests pass.
+Expected: 10 tests pass.
 
 - [ ] **Step 2.7: Run full suite to confirm no regressions**
 

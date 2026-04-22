@@ -1,52 +1,40 @@
-# RESUME — kvmchaos v0.2 Execution Checkpoint
+# RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-21
-**Status:** v0.2.0 complete and tagged — ready for next feature cycle
+**Saved:** 2026-04-22
+**Status:** v0.4 (disk.latency) code complete; lab validation pending.
 
 ## What's done
 
-### v0.1 (tagged v0.1.0)
-- Repo skeleton, package, libvirt_conn, eventlog, safety
-- `vm.pause` and `vm.kill` faults
+### v0.1 (tag v0.1.0)
+- Repo skeleton, `libvirt_conn`, `eventlog`, `safety`
+- `vm.pause`, `vm.kill`
 - CLI: `--version`, `list-vms`, `list-faults`, `inject`
-- 42 tests, 93% coverage, ruff clean
 
-### v0.2 (tagged v0.2.0)
-- `vm.freeze` — CPU scheduler throttle via `schedulerParameters()` / `setSchedulerParameters()`
-- `vm.starve` — balloon memory squeeze via `setMemory()` / `memoryStats()`
-- `--dry-run / -n` flag on `inject` — full validation, no mutation, no log writes
-- 70 tests total, 94% coverage, ruff clean
+### v0.2 (tag v0.2.0)
+- `vm.freeze` via scheduler `cpu_shares`
+- `vm.starve` via virtio-balloon
+- `--dry-run`
+
+### v0.3 (tag v0.3.0)
+- `net.latency` via `tc netem` on host tap
+- Per-run JSON records under `$XDG_STATE_HOME/kvmchaos/runs/`
+- `local_only` attribute + remote-URI guard for tap/cgroup faults
+- `qemu+ssh://` remote libvirt works for non-local-only faults
+
+### v0.4 (unreleased)
+- `disk.latency` via cgroup v2 `io.max` (partition→whole-disk resolution)
+- `--bandwidth` flag on `inject`
+- `outcome="dry_run"` distinct from `"success"` in run records
+- `lookupByName` error produces clean exit 2 instead of traceback
 
 ## Repo state
 
-- Git: `main` branch, 20 commits
-- Working tree: clean
-- Latest tag: `v0.2.0` at `28f1345`
-
-## Key files
-
-| File | Purpose |
-|---|---|
-| `src/kvmchaos/faults/vm_freeze.py` | CPU throttle fault |
-| `src/kvmchaos/faults/vm_starve.py` | Memory balloon fault |
-| `src/kvmchaos/cli.py` | inject_cmd + _run_step with --dry-run |
-| `tests/test_faults_vm_freeze.py` | 10 tests, all mock-based |
-| `tests/test_faults_vm_starve.py` | 11 tests, all mock-based |
-| `tests/test_cli_dry_run.py` | 7 CLI integration tests |
-
-## Important implementation notes
-
-- `vm.freeze` uses `domain.schedulerParameters()` / `domain.setSchedulerParameters()` — NOT `getCpuSchedulerParameters` (which doesn't exist in libvirt-python)
-- `vm.starve` reads `maxMemory()` fresh at each step — no instance state needed
-- Both faults use `MagicMock(spec=libvirt.virDomain)` for all tests — `test:///default` doesn't support QEMU-specific scheduler or balloon APIs
-- `vm.freeze` revert hardcodes `cpu_shares=1024` (QEMU/KVM default) — pre-inject value is not preserved
+- Git branch: `main`
+- Tests: 144 passing, 99% coverage
+- Ruff: clean; format clean
 
 ## What's next
 
-Backlog (from PLAN.md):
-- `net.latency` via `tc` (introduces subprocess + privilege)
-- `disk.latency` via `dm-delay`
-- `migration.abort`
-- Structured JSON-per-run records
-- HTML report generator
-- Remote libvirt (`qemu+ssh://...`)
+- Lab-validate `disk.latency` on Fedora 43 host + RHEL 9.7 guest,
+  then tick the v0.4 acceptance box in `PLAN.md` and tag `v0.4.0`.
+- Backlog: `migration.abort`, HTML report generator.

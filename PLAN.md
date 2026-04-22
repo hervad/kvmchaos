@@ -67,9 +67,18 @@ Pre-requisite: `ssh-copy-id localhost` on the KVM host (authorizes key for loopb
 
 Run for each new or modified feature. Do not tick acceptance boxes until lab validation passes.
 
-## Backlog (post-v0.1, not scheduled)
+## Acceptance (v0.4)
 
-- `disk.latency` via `dm-delay`
+- [x] `disk.latency` registered in `list-faults` with `local_only = True`
+- [x] `kvmchaos inject disk.latency <vm> --bandwidth N` throttles VM disk I/O to N MB/s via cgroup v2 `io.max`
+- [x] `disk.latency` resolves partition `major:minor` to whole-disk before writing `io.max`
+- [x] Revert writes `rbps=max wbps=max` to restore full I/O
+- [x] `pytest` passes with coverage ≥85%
+- [x] `ruff check`, `ruff format --check` clean
+- [x] Lab validation on Fedora 43 KVM host (2026-04-22)
+
+## Backlog (post-v0.4, not scheduled)
+
 - `migration.abort`
 - HTML report generator
 
@@ -90,3 +99,7 @@ Run for each new or modified feature. Do not tick acceptance boxes until lab val
 ## Revision Notes
 
 _(Add entries when a decision is reversed or revised, do not delete old rows.)_
+
+| Date       | Revised decision                                           | Rationale                                                   |
+| ---------- | ---------------------------------------------------------- | ----------------------------------------------------------- |
+| 2026-04-22 | `disk.latency` uses cgroup v2 `io.max`, not `dm-delay`.    | dm-delay is unsafe to live-inject on a qcow2-backed disk.   |
