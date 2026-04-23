@@ -35,6 +35,33 @@ class TestDefaultRunsDir:
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
         assert default_runs_dir() == tmp_path / "kvmchaos" / "runs"
 
+    def test_sudo_user_uses_invoking_user_home(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock, patch
+
+        monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+        monkeypatch.setenv("SUDO_USER", "alice")
+        fake_pw = MagicMock()
+        fake_pw.pw_dir = "/home/alice"
+        with patch("kvmchaos.runrecord.pwd.getpwnam", return_value=fake_pw):
+            result = default_runs_dir()
+        assert result == Path("/home/alice/.local/state/kvmchaos/runs")
+
+    def test_sudo_user_unknown_falls_back_to_home(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import patch
+
+        monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+        monkeypatch.setenv("SUDO_USER", "ghost")
+        with patch("kvmchaos.runrecord.pwd.getpwnam", side_effect=KeyError("ghost")):
+            result = default_runs_dir()
+        assert result == Path.home() / ".local" / "state" / "kvmchaos" / "runs"
+
+    def test_xdg_takes_precedence_over_sudo_user(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        monkeypatch.setenv("SUDO_USER", "alice")
+        assert default_runs_dir() == tmp_path / "kvmchaos" / "runs"
+
 
 class TestWriteRunRecord:
     def test_creates_directory(self, tmp_path: Path) -> None:

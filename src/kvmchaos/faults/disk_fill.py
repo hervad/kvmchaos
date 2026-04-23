@@ -10,6 +10,7 @@ Requires write permission to the image directory (typically root or the
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -54,6 +55,13 @@ class DiskFillFault:
             PermissionError: If write access to the image directory is denied.
         """
         image = _image_path(domain)
+        free = shutil.disk_usage(image.parent).free
+        if self.fill_bytes > int(free * 0.8):
+            raise RuntimeError(
+                f"insufficient disk space for disk.fill on '{domain.name()}': "
+                f"requested {self.fill_bytes} bytes but only {free} bytes free "
+                f"(limit is 80% of free space)"
+            )
         fill = _fill_path(image, domain.name())
         try:
             subprocess.run(

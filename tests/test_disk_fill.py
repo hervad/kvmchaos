@@ -152,6 +152,48 @@ class TestDiskFillInject:
             fault.inject(domain)
 
 
+class TestDiskFillFreeSpaceGuard:
+    def test_inject_raises_when_insufficient_space(self, tmp_path: Path):
+        import shutil
+
+        image = tmp_path / "vm.qcow2"
+        image.write_text("")
+        domain = _mock_domain()
+        fault = DiskFillFault(fill_bytes=10 * 1024 * 1024 * 1024)  # 10 GiB
+
+        # Simulate only 1 GiB free
+        with (
+            patch("kvmchaos.faults.disk_fill._image_path", return_value=image),
+            patch(
+                "kvmchaos.faults.disk_fill.shutil.disk_usage",
+                return_value=shutil.disk_usage("/")._replace(free=1 * 1024 * 1024 * 1024),
+            ),
+            pytest.raises(RuntimeError, match="insufficient disk space"),
+        ):
+            fault.inject(domain)
+
+    def test_inject_proceeds_when_sufficient_space(self, tmp_path: Path):
+        import shutil
+
+        image = tmp_path / "vm.qcow2"
+        image.write_text("")
+        domain = _mock_domain()
+        fault = DiskFillFault(fill_bytes=1024)
+
+        with (
+            patch("kvmchaos.faults.disk_fill._image_path", return_value=image),
+            patch(
+                "kvmchaos.faults.disk_fill.shutil.disk_usage",
+                return_value=shutil.disk_usage("/")._replace(free=10 * 1024 * 1024 * 1024),
+            ),
+            patch("kvmchaos.faults.disk_fill.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            fault.inject(domain)
+
+        mock_run.assert_called_once()
+
+
 class TestDiskFillVerify:
     def test_verify_passes_when_fill_file_exists(self, tmp_path: Path):
         image = tmp_path / "vm.qcow2"

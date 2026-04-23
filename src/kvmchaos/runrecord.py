@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,12 +25,26 @@ __all__ = [
 def default_runs_dir() -> Path:
     """Return the XDG-compliant default directory for per-run JSON records.
 
+    When running under ``sudo``, ``SUDO_USER`` is set to the invoking user's
+    name. In that case the record is written to that user's state directory
+    rather than root's, so the audit trail stays with the operator.
+
     Returns:
         Path under ``$XDG_STATE_HOME/kvmchaos/runs/``, defaulting to
-        ``~/.local/state/kvmchaos/runs/`` when ``XDG_STATE_HOME`` is unset.
+        ``~<user>/.local/state/kvmchaos/runs/``. Falls back to the current
+        user's home if ``SUDO_USER`` cannot be resolved.
     """
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "kvmchaos" / "runs"
+    xdg = os.environ.get("XDG_STATE_HOME")
+    if xdg:
+        return Path(xdg) / "kvmchaos" / "runs"
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        try:
+            home = Path(pwd.getpwnam(sudo_user).pw_dir)
+            return home / ".local" / "state" / "kvmchaos" / "runs"
+        except KeyError:
+            pass
+    return Path.home() / ".local" / "state" / "kvmchaos" / "runs"
 
 
 def filter_records(
