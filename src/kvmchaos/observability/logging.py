@@ -54,7 +54,12 @@ class JsonFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        """Render a log record as a single JSON line."""
+        """Render a log record as a single JSON line.
+
+        If the caller supplies a ``timestamp`` field via ``extra={...}``, the
+        caller's value wins — this lets `emit()` share one timestamp across the
+        JSON log line and the webhook payload.
+        """
         payload: dict[str, Any] = {
             "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "level": record.levelname,

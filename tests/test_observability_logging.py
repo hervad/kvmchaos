@@ -78,3 +78,15 @@ def test_configure_is_idempotent(
     logger.info("once", extra={"event": "x"})
     captured = capsys.readouterr()
     assert captured.err.count("\n") == 1
+
+
+def test_caller_supplied_timestamp_overrides_formatter(
+    _configure_obs_logging: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A `timestamp` in ``extra`` overrides the formatter's auto-generated one."""
+    obs_logging.configure_stderr_logging(verbose=False)
+    logger = logging.getLogger("kvmchaos.observability")
+    logger.info("e", extra={"event": "x", "timestamp": "2099-01-01T00:00:00+00:00"})
+    captured = capsys.readouterr()
+    record = json.loads(captured.err.strip())
+    assert record["timestamp"] == "2099-01-01T00:00:00+00:00"
