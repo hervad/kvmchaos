@@ -62,7 +62,7 @@ class TestNetPartitionHappyPath:
         domain = _mock_domain()
         with (
             patch.object(tc, "show_qdisc", return_value="qdisc pfifo_fast 0: root"),
-            pytest.raises(RuntimeError, match=r"net\.partition not in effect"),
+            pytest.raises(RuntimeError, match=r"netem not active"),
         ):
             NetPartitionFault().verify(domain)
 
@@ -70,7 +70,7 @@ class TestNetPartitionHappyPath:
         domain = _mock_domain()
         with (
             patch.object(tc, "show_qdisc", return_value="qdisc netem 8001: root delay 200ms"),
-            pytest.raises(RuntimeError, match=r"net\.partition not in effect"),
+            pytest.raises(RuntimeError, match=r"packet loss not active"),
         ):
             NetPartitionFault().verify(domain)
 

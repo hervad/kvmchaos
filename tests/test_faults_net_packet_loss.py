@@ -44,10 +44,10 @@ class TestNetPacketLossMetadata:
         assert NetPacketLossFault.local_only is True
 
     def test_default_loss_percent(self):
-        assert NetPacketLossFault().loss_percent == 50
+        assert NetPacketLossFault().loss_percent == 10
 
     def test_custom_loss_percent(self):
-        assert NetPacketLossFault(loss_percent=10).loss_percent == 10
+        assert NetPacketLossFault(loss_percent=25).loss_percent == 25
 
 
 class TestNetPacketLossHappyPath:
@@ -55,7 +55,7 @@ class TestNetPacketLossHappyPath:
         domain = _mock_domain()
         with patch.object(tc, "add_netem_loss") as mock_add:
             NetPacketLossFault().inject(domain)
-        mock_add.assert_called_once_with("vnet0", 50)
+        mock_add.assert_called_once_with("vnet0", 10)
 
     def test_inject_passes_custom_loss(self):
         domain = _mock_domain()

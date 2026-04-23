@@ -14,7 +14,7 @@ import libvirt
 
 import kvmchaos.tc as tc
 
-_DEFAULT_LOSS_PERCENT: int = 50
+_DEFAULT_LOSS_PERCENT: int = 10
 
 
 class NetPacketLossFault:

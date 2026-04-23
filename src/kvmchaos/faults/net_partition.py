@@ -9,7 +9,6 @@ Requires root or CAP_NET_ADMIN on the host.
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
 from typing import ClassVar
 
 import libvirt
@@ -39,7 +38,7 @@ class NetPartitionFault:
             RuntimeError: If no network interface is found in the domain XML.
             RuntimeError: If the tc command fails (e.g. permission denied).
         """
-        tc.add_netem_loss(_tap_device(domain), 100)
+        tc.add_netem_loss(tc.tap_device(domain), 100)
 
     def verify(self, domain: libvirt.virDomain) -> None:
         """Assert that netem 100% loss is active on the tap device.
@@ -50,15 +49,15 @@ class NetPartitionFault:
         Raises:
             RuntimeError: If netem or loss is not present in tc qdisc output.
         """
-        dev = _tap_device(domain)
+        dev = tc.tap_device(domain)
         output = tc.show_qdisc(dev)
         if "netem" not in output:
             raise RuntimeError(
-                f"net.partition not in effect on '{dev}' for domain '{domain.name()}'"
+                f"netem not active on '{dev}' for domain '{domain.name()}' after inject"
             )
         if "loss" not in output:
             raise RuntimeError(
-                f"net.partition not in effect on '{dev}' for domain '{domain.name()}'"
+                f"packet loss not active on '{dev}' for domain '{domain.name()}' after inject"
             )
 
     def revert(self, domain: libvirt.virDomain) -> None:
@@ -71,23 +70,4 @@ class NetPartitionFault:
             RuntimeError: If no network interface is found in the domain XML.
             RuntimeError: If the tc command fails.
         """
-        tc.del_root_qdisc(_tap_device(domain))
-
-
-def _tap_device(domain: libvirt.virDomain) -> str:
-    """Extract the first tap device name from the domain XML.
-
-    Args:
-        domain: A live libvirt domain handle.
-
-    Returns:
-        Host-side tap device name (e.g. ``'vnet0'``).
-
-    Raises:
-        RuntimeError: If no ``<interface>`` with a ``<target dev>`` is found.
-    """
-    root = ET.fromstring(domain.XMLDesc())
-    target = root.find(".//interface/target[@dev]")
-    if target is None:
-        raise RuntimeError(f"no network interface found for domain '{domain.name()}'")
-    return target.attrib["dev"]
+        tc.del_root_qdisc(tc.tap_device(domain))

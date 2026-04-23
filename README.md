@@ -62,6 +62,7 @@ uv run kvmchaos --connect qemu+ssh://host/system inject vm.pause myvm --yes
 | `net.partition` | Block all traffic via `iptables` | Yes |
 | `disk.latency` | Throttle disk I/O via cgroup v2 `io.max` | Yes |
 | `disk.fill` | Fill disk space with a junk file | No |
+| `clock.skew` | Skew guest clock via `qemu-guest-agent` | No |
 
 All faults run an inject → verify → hold → revert cycle. The run record is written
 to `~/.local/state/kvmchaos/runs/` as JSON regardless of outcome.
