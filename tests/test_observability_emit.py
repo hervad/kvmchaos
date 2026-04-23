@@ -38,3 +38,14 @@ def test_build_payload_preserves_extra_fields() -> None:
     )
     assert payload["params"] == {"ms": 200}
     assert payload["duration_s"] == 30
+
+
+def test_kvmchaos_version_fallback_when_metadata_missing(monkeypatch) -> None:
+    """`_kvmchaos_version` returns the sentinel when the package is not installed."""
+    from importlib.metadata import PackageNotFoundError
+
+    def _raise(_name: str) -> str:
+        raise PackageNotFoundError("kvmchaos")
+
+    monkeypatch.setattr("kvmchaos.observability.events.version", _raise)
+    assert events._kvmchaos_version() == "0.0.0+unknown"

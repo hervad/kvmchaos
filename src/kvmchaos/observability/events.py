@@ -15,16 +15,6 @@ REVERT_ERROR = "revert.error"
 EXPERIMENT_START = "experiment.start"
 EXPERIMENT_END = "experiment.end"
 
-ALL_EVENTS: tuple[str, ...] = (
-    INJECT_START,
-    INJECT_SUCCESS,
-    INJECT_ERROR,
-    REVERT_SUCCESS,
-    REVERT_ERROR,
-    EXPERIMENT_START,
-    EXPERIMENT_END,
-)
-
 
 def _kvmchaos_version() -> str:
     """Return the installed kvmchaos version, or ``'0.0.0+unknown'`` if missing."""
