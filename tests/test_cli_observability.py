@@ -85,3 +85,18 @@ def test_run_emits_experiment_start_and_end(
     assert end_call.args[0]["status"] == "ok"
     assert end_call.args[0]["recipe_path"].endswith("exp.toml")
     assert isinstance(end_call.args[0]["elapsed_s"], (int, float))
+
+
+def test_root_callback_initialises_observability(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`kvmchaos list-faults` triggers logging setup without errors."""
+    import logging as _logging
+
+    from kvmchaos.observability import logging as obs_logging
+
+    obs_logging._reset_for_tests()
+    runner = CliRunner()
+    # any command path exercises the callback
+    result = runner.invoke(app, ["list-faults"])
+    assert result.exit_code == 0
+    logger = _logging.getLogger("kvmchaos.observability")
+    assert any(getattr(h, "_kvmchaos_obs", False) for h in logger.handlers)

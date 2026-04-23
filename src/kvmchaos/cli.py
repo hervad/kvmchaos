@@ -37,6 +37,9 @@ from kvmchaos.faults.net_packet_loss import NetPacketLossFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
 from kvmchaos.observability import emit as _obs_emit
 from kvmchaos.observability import events as obs_events
+from kvmchaos.observability import logging as obs_logging
+from kvmchaos.observability import set_notifier as _obs_set_notifier
+from kvmchaos.observability.notifier import Notifier
 from kvmchaos.report import load_records, render_html
 from kvmchaos.runrecord import (
     default_runs_dir,
@@ -95,6 +98,13 @@ def _root(
     """
     ctx.ensure_object(dict)
     ctx.obj[_CTX_KEY] = connect_uri
+    obs_logging.configure_stderr_logging(verbose=False)
+    import sys as _sys
+
+    _emit_mod = _sys.modules.get("kvmchaos.observability.emit")
+    if _emit_mod is not None and getattr(_emit_mod, "_NOTIFIER", None) is None:
+        cfg = load_config(None)
+        _obs_set_notifier(Notifier(cfg.notifier))
 
 
 @app.command("list-vms")
