@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import logging
 from collections.abc import Iterator
 
 import libvirt
@@ -55,14 +54,3 @@ def _reset_observability_logging() -> Iterator[None]:
     obs_logging._reset_for_tests()
     yield
     obs_logging._reset_for_tests()
-
-
-@pytest.fixture(autouse=True)
-def _reset_notifier_logger() -> Iterator[None]:
-    """Reset notifier logger propagation state after each test."""
-    yield
-    # After obs_logging._reset_for_tests(), ensure both parent and notifier loggers propagate
-    obs_logger = logging.getLogger("kvmchaos.observability")
-    obs_logger.propagate = True
-    notifier_logger = logging.getLogger("kvmchaos.observability.notifier")
-    notifier_logger.propagate = True

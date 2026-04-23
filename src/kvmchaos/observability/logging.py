@@ -92,7 +92,14 @@ def configure_stderr_logging(*, verbose: bool) -> None:
 
 
 def _reset_for_tests() -> None:
-    """Remove all handlers from the observability logger. Test-only helper."""
+    """Remove all handlers and restore propagate flag on observability loggers.
+
+    Test-only helper. Restores propagation so `caplog` (which depends on the
+    root logger seeing child records) keeps working in subsequent tests.
+    """
     logger = logging.getLogger(LOGGER_NAME)
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
+    logger.propagate = True
+    notifier_logger = logging.getLogger(LOGGER_NAME + ".notifier")
+    notifier_logger.propagate = True

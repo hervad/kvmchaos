@@ -82,12 +82,8 @@ def test_timeout_kwarg_used() -> None:
 
 
 def test_network_error_swallowed(caplog: pytest.LogCaptureFixture) -> None:
-    # Ensure the loggers propagate (may be disabled by other tests' setup)
-    obs_logger = logging.getLogger("kvmchaos.observability")
-    obs_logger.propagate = True
-    notifier_logger = logging.getLogger("kvmchaos.observability.notifier")
-    notifier_logger.propagate = True
     # Ensure the logger itself can emit at WARNING level
+    notifier_logger = logging.getLogger("kvmchaos.observability.notifier")
     notifier_logger.setLevel(logging.WARNING)
 
     n = Notifier(_enabled_cfg())
@@ -105,12 +101,8 @@ def test_network_error_swallowed(caplog: pytest.LogCaptureFixture) -> None:
 
 
 def test_non_2xx_swallowed(caplog: pytest.LogCaptureFixture) -> None:
-    # Ensure the loggers propagate (may be disabled by other tests' setup)
-    obs_logger = logging.getLogger("kvmchaos.observability")
-    obs_logger.propagate = True
-    notifier_logger = logging.getLogger("kvmchaos.observability.notifier")
-    notifier_logger.propagate = True
     # Ensure the logger itself can emit at WARNING level
+    notifier_logger = logging.getLogger("kvmchaos.observability.notifier")
     notifier_logger.setLevel(logging.WARNING)
 
     n = Notifier(_enabled_cfg())
