@@ -209,6 +209,15 @@ Findings from production readiness audit (2026-04-23). Prioritised for RHEL 9 pr
 - [x] `ruff check`, `ruff format --check` clean
 - [x] Lab validation on Fedora 43 KVM host (2026-04-23)
 
+## Acceptance (v0.14) — net.corrupt
+
+- [x] `net.corrupt` registered in `list-faults` with `local_only = True`
+- [x] `kvmchaos inject net.corrupt <vm> --corrupt N` corrupts N% of packets on VM's first vNIC
+- [x] Revert removes the root qdisc, restoring normal forwarding
+- [x] `pytest` passes with coverage ≥85%
+- [x] `ruff check`, `ruff format --check` clean
+- [x] Lab validation on Fedora 43 KVM host (2026-04-23)
+
 ## Backlog (post-v0.11, not scheduled)
 
 - `disk.corrupt` — targeted block-level corruption (high risk, needs design)
