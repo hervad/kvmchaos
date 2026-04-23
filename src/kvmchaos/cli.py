@@ -35,6 +35,8 @@ from kvmchaos.faults.net_bandwidth import NetBandwidthFault
 from kvmchaos.faults.net_corrupt import NetCorruptFault
 from kvmchaos.faults.net_packet_loss import NetPacketLossFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
+from kvmchaos.observability import emit as _obs_emit
+from kvmchaos.observability import events as obs_events
 from kvmchaos.report import load_records, render_html
 from kvmchaos.runrecord import (
     default_runs_dir,
@@ -619,9 +621,15 @@ def inject_cmd(
     if fault_name == "clock.skew" and skew == 0:
         typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)
         raise typer.Exit(code=2)
-    fault = _build_fault(
-        fault_name, bandwidth=bandwidth, size=size, loss=loss, rate=rate, corrupt=corrupt, skew=skew
-    )
+    fault_params: dict[str, object] = {
+        "bandwidth": bandwidth,
+        "size": size,
+        "loss": loss,
+        "rate": rate,
+        "corrupt": corrupt,
+        "skew": skew,
+    }
+    fault = _build_fault(fault_name, **fault_params)  # type: ignore[arg-type]
 
     if not force:
         try:
@@ -672,7 +680,14 @@ def inject_cmd(
         steps: list[dict[str, object]] = []
 
         inject_step = _run_step(
-            fault.inject, domain, action="inject", fault_name=fault_name, vm=vm, dry_run=dry_run
+            fault.inject,
+            domain,
+            action="inject",
+            fault_name=fault_name,
+            vm=vm,
+            dry_run=dry_run,
+            inject_params=fault_params,
+            duration_s=duration,
         )
         steps.append(inject_step)
         if inject_step["result"] == "fail":
@@ -991,6 +1006,8 @@ def _run_step(
     fault_name: str,
     vm: str,
     dry_run: bool = False,
+    inject_params: dict[str, object] | None = None,
+    duration_s: int | None = None,
 ) -> dict[str, object]:
     """Execute one fault step (inject, verify, or revert) and log the outcome.
 
@@ -1001,6 +1018,10 @@ def _run_step(
         fault_name: Fault registry key, included in the log event.
         vm: VM name, included in the log event.
         dry_run: If True, print a plan line and return without calling func or logging.
+        inject_params: Fault-specific parameters (inject action only), included in the
+            ``inject.start`` event payload.
+        duration_s: Seconds the fault will be held (inject action only), included in
+            the ``inject.start`` event payload.
 
     Returns:
         Dict with ``action``, ``result`` (``'ok'``, ``'fail'``, or ``'skipped'``),
@@ -1009,6 +1030,32 @@ def _run_step(
     if dry_run:
         typer.echo(f"[dry-run] would: {action} {fault_name} on {vm}")
         return {"action": action, "result": "skipped", "duration_ms": 0}
+
+    start_event_map = {
+        "inject": obs_events.INJECT_START,
+        "revert": None,
+        "verify": None,
+    }
+    success_event_map = {
+        "inject": obs_events.INJECT_SUCCESS,
+        "revert": obs_events.REVERT_SUCCESS,
+        "verify": None,
+    }
+    error_event_map = {
+        "inject": obs_events.INJECT_ERROR,
+        "revert": obs_events.REVERT_ERROR,
+        "verify": None,
+    }
+
+    start_event = start_event_map.get(action)
+    if start_event is not None:
+        extra: dict[str, object] = {"fault": fault_name, "vm": vm}
+        if inject_params is not None:
+            extra["params"] = inject_params
+        if duration_s is not None:
+            extra["duration_s"] = duration_s
+        _obs_emit(start_event, **extra)
+
     t0 = time.monotonic()
     try:
         func(domain)
@@ -1022,10 +1069,28 @@ def _run_step(
             duration_ms=duration_ms,
             error=str(exc),
         )
+        err_event = error_event_map.get(action)
+        if err_event is not None:
+            _obs_emit(
+                err_event,
+                fault=fault_name,
+                vm=vm,
+                error=str(exc),
+                error_type=type(exc).__name__,
+                elapsed_s=round(duration_ms / 1000, 3),
+            )
         typer.echo(f"{action} error: {exc}", err=True)
         return {"action": action, "result": "fail", "duration_ms": duration_ms, "error": str(exc)}
     duration_ms = int((time.monotonic() - t0) * 1000)
     log_event(action=action, fault=fault_name, vm=vm, result="ok", duration_ms=duration_ms)
+    ok_event = success_event_map.get(action)
+    if ok_event is not None:
+        _obs_emit(
+            ok_event,
+            fault=fault_name,
+            vm=vm,
+            elapsed_s=round(duration_ms / 1000, 3),
+        )
     return {"action": action, "result": "ok", "duration_ms": duration_ms}
 
 
