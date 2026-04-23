@@ -34,7 +34,8 @@ All `net.*` faults use `tc netem` — no `br_netfilter` required.
 ## Dependencies
 
 - Runtime: `libvirt-python`, `typer`. No others without a design change.
-- Dev: `pytest`, `pytest-cov`, `ruff`.
+- Dev: `pytest`, `pytest-cov`, `ruff`, `ty` (type checker; known false-positives from
+  `libvirt-python`'s loose stubs — run manually for spot checks, not in CI).
 - Requires system package: `libvirt-devel` + `pkg-config` (Fedora/RHEL: `dnf install libvirt-devel pkg-config`).
 
 ## Commands

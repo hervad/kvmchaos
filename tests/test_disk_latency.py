@@ -327,3 +327,78 @@ class TestWholeDisk:
         ):
             major, minor = _whole_disk(253, 0)
         assert (major, minor) == (253, 0)
+
+    def test_whole_disk_realpath_oserror_returns_unchanged(self):
+        from kvmchaos.faults.disk_latency import _whole_disk
+
+        with patch(
+            "kvmchaos.faults.disk_latency.os.path.realpath",
+            side_effect=OSError("broken symlink"),
+        ):
+            major, minor = _whole_disk(253, 0)
+        assert (major, minor) == (253, 0)
+
+
+class TestDiskDevErrors:
+    def test_raises_when_disk_source_has_no_file_attr(self):
+        """Covers line 196: source element present but no 'file' attribute."""
+        from kvmchaos.faults.disk_latency import _disk_dev
+
+        xml = (
+            "<domain><devices><disk type='block' device='disk'><source/></disk></devices></domain>"
+        )
+        domain = _mock_domain(xml)
+
+        with pytest.raises(RuntimeError, match="no file attribute"):
+            _disk_dev(domain)
+
+
+class TestMountinfoParsing:
+    def test_skips_lines_without_fs_separator(self, tmp_path: Path):
+        """Covers line 226: mountinfo lines missing the ' - ' separator."""
+        from kvmchaos.faults.disk_latency import _backing_block_device
+
+        mountinfo = (
+            "garbage line with no separator\n"
+            "1 0 0:1 / / rw - rootfs rootfs rw\n"
+            "2 1 259:9 / /var/lib/libvirt rw - btrfs /dev/nvme0n1p6 rw\n"
+        )
+        target = tmp_path / "var" / "lib" / "libvirt" / "images" / "vm.qcow2"
+        target.parent.mkdir(parents=True)
+        target.write_text("")
+
+        def fake_read_text(self, *a, **kw):
+            if str(self) == "/proc/self/mountinfo":
+                return mountinfo
+            return ""
+
+        with (
+            patch.object(Path, "read_text", autospec=True, side_effect=fake_read_text),
+            patch.object(Path, "resolve", return_value=Path("/var/lib/libvirt/images/vm.qcow2")),
+        ):
+            result = _backing_block_device(target)
+        assert str(result) == "/dev/nvme0n1p6"
+
+    def test_skips_lines_with_too_few_fields(self, tmp_path: Path):
+        """Covers line 230: mountinfo lines with truncated field counts."""
+        from kvmchaos.faults.disk_latency import _backing_block_device
+
+        mountinfo = (
+            "1 0 - btrfs\n"  # both sides too short
+            "2 1 259:9 / /var/lib/libvirt rw - btrfs /dev/nvme0n1p6 rw\n"
+        )
+        target = tmp_path / "var" / "lib" / "libvirt" / "images" / "vm.qcow2"
+        target.parent.mkdir(parents=True)
+        target.write_text("")
+
+        def fake_read_text(self, *a, **kw):
+            if str(self) == "/proc/self/mountinfo":
+                return mountinfo
+            return ""
+
+        with (
+            patch.object(Path, "read_text", autospec=True, side_effect=fake_read_text),
+            patch.object(Path, "resolve", return_value=Path("/var/lib/libvirt/images/vm.qcow2")),
+        ):
+            result = _backing_block_device(target)
+        assert str(result) == "/dev/nvme0n1p6"

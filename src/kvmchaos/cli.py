@@ -25,6 +25,7 @@ import typer
 from kvmchaos import __version__
 from kvmchaos.eventlog import configure_logging, log_event
 from kvmchaos.faults import FAULTS
+from kvmchaos.faults.base import Fault
 from kvmchaos.faults.clock_skew import ClockSkewFault
 from kvmchaos.faults.disk_fill import DiskFillFault
 from kvmchaos.faults.disk_latency import DiskLatencyFault
@@ -32,7 +33,6 @@ from kvmchaos.faults.net_bandwidth import NetBandwidthFault
 from kvmchaos.faults.net_corrupt import NetCorruptFault
 from kvmchaos.faults.net_packet_loss import NetPacketLossFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
-from kvmchaos.report import generate as generate_report
 from kvmchaos.report import load_records, render_html
 from kvmchaos.runrecord import (
     default_runs_dir,
@@ -147,16 +147,13 @@ def report_cmd(
         vm: Optional exact VM name filter.
     """
     target_runs = runs_dir if runs_dir is not None else default_runs_dir()
-    records = load_records(target_runs)
     records = filter_records(
-        records, since=_parse_since(since), fault=fault, outcome=outcome, vm=vm
+        load_records(target_runs),
+        since=_parse_since(since),
+        fault=fault,
+        outcome=outcome,
+        vm=vm,
     )
-    if since is None and fault is None and outcome is None and vm is None:
-        # Preserve the prior no-filter fast-path so the generate() helper
-        # covers its empty-file write and other edge cases.
-        written = generate_report(output, target_runs)
-        typer.echo(f"Report: {written}")
-        return
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(render_html(records))
     typer.echo(f"Report: {output}")
@@ -340,7 +337,7 @@ def _is_remote(uri: str) -> bool:
     return host not in ("", "localhost", "127.0.0.1", "::1")
 
 
-_FAULT_BUILDERS: dict[str, Callable[..., object]] = {
+_FAULT_BUILDERS: dict[str, Callable[..., Fault]] = {
     "disk.latency": lambda bandwidth, **_: DiskLatencyFault(bandwidth_bps=bandwidth * 1_000_000),
     "disk.fill": lambda size, **_: DiskFillFault(fill_bytes=size * 1024 * 1024),
     "net.packet-loss": lambda loss, **_: NetPacketLossFault(loss_percent=loss),
@@ -350,7 +347,7 @@ _FAULT_BUILDERS: dict[str, Callable[..., object]] = {
 }
 
 
-def _build_fault(fault_name: str, **params: int) -> object:
+def _build_fault(fault_name: str, **params: int) -> Fault:
     """Construct a fault instance, applying CLI params for parameterised faults.
 
     Faults without tunable parameters (e.g. ``vm.pause``) return the shared
