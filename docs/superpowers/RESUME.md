@@ -1,7 +1,7 @@
 # RESUME — kvmchaos Checkpoint
 
 **Saved:** 2026-04-23
-**Status:** v0.15.0 — productisation milestone.
+**Status:** v0.16.0 — observability (journald JSON + webhook notifier).
 
 ## What's done
 
@@ -42,6 +42,15 @@ Foundational faults, run records, HTML report, production hardening.
 - Five recipes in `docs/recipes/`.
 - README troubleshooting table.
 
+### v0.16.0 (this session)
+
+**Observability (Phase 4)**
+- New `kvmchaos.observability` package: stderr JSON logger + webhook `Notifier`.
+- Seven events emitted from `_run_step` and `run_cmd`.
+- `[notifier]` section + `ConfigError` validation in `config.py`.
+- `--verbose` on root CLI for DEBUG observability logs.
+- Prometheus `/metrics` and Slack-native formatting deferred (see spec §6).
+
 ## Repo state
 
 - Git branch: `main`
@@ -51,8 +60,6 @@ Foundational faults, run records, HTML report, production hardening.
 
 ## What's next
 
-- **Phase 4 — Observability:** structured journald logs, Prometheus `/metrics`
-  endpoint, Slack/webhook notifier on inject start/end.
 - **Phase 5 — Distribution:** PyPI package, shell completion, RPM/DEB specs,
   container image.
 - **Phase 6 — Multi-target / Cloud:** multi-VM concurrent experiments,

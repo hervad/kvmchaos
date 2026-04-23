@@ -8,6 +8,28 @@ All notable changes to kvmchaos. Format loosely follows
 
 None yet.
 
+## [0.16.0] — 2026-04-23
+
+### Added
+
+- `kvmchaos.observability` package with two sinks for inject/revert lifecycle
+  events:
+  - JSON-formatted log lines on stderr (journald-friendly, `| jq`-pipeable).
+  - Synchronous webhook notifier (configurable URL, optional bearer-token
+    `Authorization` header, 3 s timeout, per-event subscription filter).
+- `[notifier]` section in `~/.config/kvmchaos/config.toml` (`webhook_url`,
+  `auth_header`, `timeout_s`, `events`).
+- Seven event types: `inject.start`, `inject.success`, `inject.error`,
+  `revert.success`, `revert.error`, `experiment.start`, `experiment.end`.
+- `--verbose` flag on the root CLI to enable DEBUG-level observability logging.
+- `ConfigError` exception for malformed config files (raised at startup).
+
+### Changed
+
+- `_run_step` in `cli.py` now emits observability events alongside the
+  existing file-based event log.
+- `run` command brackets the experiment with `experiment.start`/`experiment.end`.
+
 ## [0.15.0] — 2026-04-23
 
 ### Code quality
