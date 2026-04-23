@@ -128,3 +128,21 @@ class TestAddNetemRate:
             )
             with pytest.raises(RuntimeError, match="tc command failed"):
                 tc.add_netem_rate("vnet99", 1000)
+
+
+class TestAddNetemCorrupt:
+    def test_calls_tc_with_correct_args(self):
+        with patch("kvmchaos.tc.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            tc.add_netem_corrupt("vnet0", 5)
+            mock_run.assert_called_once_with(
+                ["tc", "qdisc", "replace", "dev", "vnet0", "root", "netem", "corrupt", "5%"],
+                capture_output=True,
+                text=True,
+            )
+
+    def test_raises_on_tc_failure(self):
+        with patch("kvmchaos.tc.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stderr="Operation not permitted")
+            with pytest.raises(RuntimeError, match="tc command failed"):
+                tc.add_netem_corrupt("vnet0", 5)

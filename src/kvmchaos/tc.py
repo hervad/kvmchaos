@@ -42,6 +42,21 @@ def add_netem_loss(dev: str, loss_percent: int) -> None:
     _run(["tc", "qdisc", "replace", "dev", dev, "root", "netem", "loss", f"{loss_percent}%"])
 
 
+def add_netem_corrupt(dev: str, corrupt_percent: int) -> None:
+    """Add or replace a netem qdisc with a fixed packet-corruption rate on a network device.
+
+    Uses ``replace`` so the call is idempotent if a qdisc already exists.
+
+    Args:
+        dev: Host network device name (e.g. ``'vnet0'``).
+        corrupt_percent: Percentage of packets to corrupt (1-100).
+
+    Raises:
+        RuntimeError: If tc exits non-zero (e.g. device not found, no permission).
+    """
+    _run(["tc", "qdisc", "replace", "dev", dev, "root", "netem", "corrupt", f"{corrupt_percent}%"])
+
+
 def add_netem_rate(dev: str, rate_kbps: int) -> None:
     """Add or replace a netem qdisc with a fixed rate limit on a network device.
 
