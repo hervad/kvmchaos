@@ -60,16 +60,9 @@ class NetPacketLossFault:
         Raises:
             RuntimeError: If netem is not present or loss is not configured.
         """
-        dev = tc.tap_device(domain)
-        output = tc.show_qdisc(dev)
-        if "netem" not in output:
-            raise RuntimeError(
-                f"netem not active on '{dev}' for domain '{domain.name()}' after inject"
-            )
-        if "loss" not in output:
-            raise RuntimeError(
-                f"packet loss not active on '{dev}' for domain '{domain.name()}' after inject"
-            )
+        tc.assert_netem_active(
+            tc.tap_device(domain), domain.name(), keyword="loss", label="packet loss"
+        )
 
     def revert(self, domain: libvirt.virDomain) -> None:
         """Remove the root qdisc from the tap device, restoring kernel default.

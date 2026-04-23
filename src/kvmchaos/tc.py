@@ -117,6 +117,36 @@ def del_root_qdisc(dev: str) -> None:
         )
 
 
+def assert_netem_active(
+    dev: str, domain_name: str, keyword: str | None = None, label: str | None = None
+) -> None:
+    """Assert that a netem qdisc is active on ``dev``, optionally matching a keyword.
+
+    Used by net.* faults in their ``verify`` step to confirm the kernel
+    actually has the expected qdisc installed. Raises ``RuntimeError`` with
+    a standardised message on mismatch.
+
+    Args:
+        dev: Host network device name.
+        domain_name: libvirt domain name, interpolated into error messages.
+        keyword: If given, the qdisc output must also contain this substring
+            (e.g. ``'rate'``, ``'loss'``, ``'corrupt'``).
+        label: Human-friendly synonym used in the error message when
+            ``keyword`` is missing. Defaults to ``keyword``.
+
+    Raises:
+        RuntimeError: If netem is not active, or if ``keyword`` is given and absent.
+    """
+    output = show_qdisc(dev)
+    if "netem" not in output:
+        raise RuntimeError(f"netem not active on '{dev}' for domain '{domain_name}' after inject")
+    if keyword and keyword not in output:
+        display = label or keyword
+        raise RuntimeError(
+            f"{display} not active on '{dev}' for domain '{domain_name}' after inject"
+        )
+
+
 def show_qdisc(dev: str) -> str:
     """Return the output of ``tc qdisc show dev <dev>``.
 
