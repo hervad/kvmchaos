@@ -28,6 +28,7 @@ from kvmchaos.faults import FAULTS
 from kvmchaos.faults.clock_skew import ClockSkewFault
 from kvmchaos.faults.disk_fill import DiskFillFault
 from kvmchaos.faults.disk_latency import DiskLatencyFault
+from kvmchaos.faults.net_bandwidth import NetBandwidthFault
 from kvmchaos.faults.net_packet_loss import NetPacketLossFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
 from kvmchaos.report import generate as generate_report
@@ -373,6 +374,12 @@ def inject_cmd(
         min=1,
         max=100,
     ),
+    rate: int = typer.Option(
+        1000,
+        "--rate",
+        help="Bandwidth cap in kbps (net.bandwidth only).",
+        min=1,
+    ),
     skew: int = typer.Option(
         3600,
         "--skew",
@@ -395,6 +402,7 @@ def inject_cmd(
         bandwidth: Disk I/O throttle in MB/s, used only by disk.latency.
         size: Fill size in MiB, used only by disk.fill.
         loss: Packet loss percentage, used only by net.packet-loss.
+        rate: Bandwidth cap in kbps, used only by net.bandwidth.
         skew: Clock offset in seconds, used only by clock.skew.
     """
     configure_logging()
@@ -412,6 +420,8 @@ def inject_cmd(
         fault = DiskFillFault(fill_bytes=size * 1024 * 1024)
     elif fault_name == "net.packet-loss":
         fault = NetPacketLossFault(loss_percent=loss)
+    elif fault_name == "net.bandwidth":
+        fault = NetBandwidthFault(rate_kbps=rate)
     elif fault_name == "clock.skew":
         if skew == 0:
             typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)

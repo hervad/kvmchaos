@@ -1,7 +1,8 @@
-"""`net.packet-loss` fault — inject packet loss on a VM's first virtual NIC.
+"""`net.bandwidth` fault — cap a VM's first vNIC throughput via tc netem rate.
 
-Uses ``tc netem`` on the host-side tap device to drop a fixed percentage of
-packets. The tap device name is resolved via :func:`kvmchaos.tc.tap_device`.
+Uses ``tc netem rate`` on the host-side tap device to limit bandwidth to a
+fixed number of kilobits per second. The tap device name is resolved via
+:func:`kvmchaos.tc.tap_device`.
 
 Requires root or CAP_NET_ADMIN on the host.
 """
@@ -14,33 +15,33 @@ import libvirt
 
 import kvmchaos.tc as tc
 
-_DEFAULT_LOSS_PERCENT: int = 50
+_DEFAULT_RATE_KBPS: int = 1000
 
 
-class NetPacketLossFault:
-    """Injects packet loss via tc netem on the host tap device.
+class NetBandwidthFault:
+    """Caps a VM's first vNIC throughput via tc netem rate on the host tap device.
 
-    Implements the ``Fault`` protocol. Stateful: ``loss_percent`` is set at
+    Implements the ``Fault`` protocol. Stateful: ``rate_kbps`` is set at
     construction and used across inject/verify/revert.
     """
 
-    name: ClassVar[str] = "net.packet-loss"
+    name: ClassVar[str] = "net.bandwidth"
     description: ClassVar[str] = (
-        f"Drop {_DEFAULT_LOSS_PERCENT}% of packets on first vNIC via tc netem."
+        f"Cap first vNIC throughput to {_DEFAULT_RATE_KBPS}kbps via tc netem rate."
     )
     destructive: ClassVar[bool] = False
     local_only: ClassVar[bool] = True
 
-    def __init__(self, loss_percent: int = _DEFAULT_LOSS_PERCENT) -> None:
-        """Initialise with a packet-loss percentage.
+    def __init__(self, rate_kbps: int = _DEFAULT_RATE_KBPS) -> None:
+        """Initialise with a bandwidth cap.
 
         Args:
-            loss_percent: Percentage of packets to drop (0-100). Default 50.
+            rate_kbps: Throughput limit in kilobits per second. Default 1000.
         """
-        self.loss_percent = loss_percent
+        self.rate_kbps = rate_kbps
 
     def inject(self, domain: libvirt.virDomain) -> None:
-        """Apply netem packet loss to the domain's first tap device.
+        """Apply netem rate limit to the domain's first tap device.
 
         Args:
             domain: A live libvirt domain handle.
@@ -49,16 +50,16 @@ class NetPacketLossFault:
             RuntimeError: If no network interface is found in the domain XML.
             RuntimeError: If the tc command fails (e.g. permission denied).
         """
-        tc.add_netem_loss(tc.tap_device(domain), self.loss_percent)
+        tc.add_netem_rate(tc.tap_device(domain), self.rate_kbps)
 
     def verify(self, domain: libvirt.virDomain) -> None:
-        """Assert that netem packet loss is active on the tap device.
+        """Assert that netem rate limiting is active on the tap device.
 
         Args:
             domain: A live libvirt domain handle.
 
         Raises:
-            RuntimeError: If netem is not present or loss is not configured.
+            RuntimeError: If netem is not present or rate is not configured.
         """
         dev = tc.tap_device(domain)
         output = tc.show_qdisc(dev)
@@ -66,9 +67,9 @@ class NetPacketLossFault:
             raise RuntimeError(
                 f"netem not active on '{dev}' for domain '{domain.name()}' after inject"
             )
-        if "loss" not in output:
+        if "rate" not in output:
             raise RuntimeError(
-                f"packet loss not active on '{dev}' for domain '{domain.name()}' after inject"
+                f"bandwidth limit not active on '{dev}' for domain '{domain.name()}' after inject"
             )
 
     def revert(self, domain: libvirt.virDomain) -> None:

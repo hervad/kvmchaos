@@ -502,6 +502,46 @@ class TestNetPacketLossCli:
         assert result.exit_code == 0
 
 
+class TestNetBandwidthCli:
+    def test_net_bandwidth_appears_in_list_faults(self) -> None:
+        result = runner.invoke(app, ["list-faults"])
+        assert result.exit_code == 0
+        assert "net.bandwidth" in result.stdout
+
+    def test_rate_flag_accepted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from kvmchaos.faults.net_bandwidth import NetBandwidthFault
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+            return {"action": action, "result": "skipped", "duration_ms": 0}
+
+        with (
+            patch("kvmchaos.cli._run_step", side_effect=capturing_run_step),
+            patch("kvmchaos.cli.FAULTS", {"net.bandwidth": NetBandwidthFault()}),
+            patch("kvmchaos.cli.connect") as mock_conn,
+        ):
+            mock_domain = MagicMock()
+            mock_conn.return_value.__enter__.return_value.lookupByName.return_value = mock_domain
+            result = runner.invoke(
+                app,
+                [
+                    "--connect",
+                    "test:///default",
+                    "inject",
+                    "--yes",
+                    "--dry-run",
+                    "--rate",
+                    "512",
+                    "net.bandwidth",
+                    "test",
+                ],
+            )
+        assert result.exit_code == 0
+
+
 class TestNetPartitionCli:
     def test_net_partition_appears_in_list_faults(self) -> None:
         result = runner.invoke(app, ["list-faults"])

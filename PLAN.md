@@ -199,6 +199,16 @@ Findings from production readiness audit (2026-04-23). Prioritised for RHEL 9 pr
 - [x] **`--size` upper cap for `disk.fill`** (`cli.py`) — no upper bound; absurd values
       (e.g. `--size 2147483647`) attempt a 2 PiB allocation
 
+## Acceptance (v0.13) — net.bandwidth
+
+- [x] `net.bandwidth` registered in `list-faults` with `local_only = True`
+- [x] `kvmchaos inject net.bandwidth <vm> --rate N` caps VM NIC throughput to N kbps
+- [x] Revert removes the root qdisc, restoring normal forwarding
+- [x] `_tap_device` extracted to `tc.py`; no duplication across net fault files
+- [x] `pytest` passes with coverage ≥85%
+- [x] `ruff check`, `ruff format --check` clean
+- [x] Lab validation on Fedora 43 KVM host (2026-04-23)
+
 ## Backlog (post-v0.11, not scheduled)
 
 - `disk.corrupt` — targeted block-level corruption (high risk, needs design)

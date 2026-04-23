@@ -7,6 +7,9 @@ the host. A non-zero exit from tc raises RuntimeError with the stderr output.
 from __future__ import annotations
 
 import subprocess
+import xml.etree.ElementTree as ET
+
+import libvirt
 
 
 def add_netem_delay(dev: str, delay_ms: int) -> None:
@@ -37,6 +40,43 @@ def add_netem_loss(dev: str, loss_percent: int) -> None:
         RuntimeError: If tc exits non-zero (e.g. device not found, no permission).
     """
     _run(["tc", "qdisc", "replace", "dev", dev, "root", "netem", "loss", f"{loss_percent}%"])
+
+
+def add_netem_rate(dev: str, rate_kbps: int) -> None:
+    """Add or replace a netem qdisc with a fixed rate limit on a network device.
+
+    Uses ``replace`` so the call is idempotent if a qdisc already exists.
+
+    Args:
+        dev: Host network device name (e.g. ``'vnet0'``).
+        rate_kbps: Bandwidth cap in kilobits per second.
+
+    Raises:
+        RuntimeError: If tc exits non-zero (e.g. device not found, no permission).
+    """
+    _run(["tc", "qdisc", "replace", "dev", dev, "root", "netem", "rate", f"{rate_kbps}kbit"])
+
+
+def tap_device(domain: libvirt.virDomain) -> str:
+    """Extract the first tap device name from the domain XML.
+
+    Parses the ``<target dev="..."/>`` attribute of the first ``<interface>``
+    element in the domain XML descriptor.
+
+    Args:
+        domain: A live libvirt domain handle.
+
+    Returns:
+        Host-side tap device name (e.g. ``'vnet0'``).
+
+    Raises:
+        RuntimeError: If no ``<interface>`` with a ``<target dev>`` is found.
+    """
+    root = ET.fromstring(domain.XMLDesc())
+    target = root.find(".//interface/target[@dev]")
+    if target is None:
+        raise RuntimeError(f"no network interface found for domain '{domain.name()}'")
+    return target.attrib["dev"]
 
 
 def del_root_qdisc(dev: str) -> None:

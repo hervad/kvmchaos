@@ -1,7 +1,7 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-22
-**Status:** v0.4 (disk.latency) code complete; lab validation pending.
+**Saved:** 2026-04-23
+**Status:** v0.13 (net.bandwidth) complete and lab-validated.
 
 ## What's done
 
@@ -21,20 +21,26 @@
 - `local_only` attribute + remote-URI guard for tap/cgroup faults
 - `qemu+ssh://` remote libvirt works for non-local-only faults
 
-### v0.4 (unreleased)
-- `disk.latency` via cgroup v2 `io.max` (partition→whole-disk resolution)
-- `--bandwidth` flag on `inject`
-- `outcome="dry_run"` distinct from `"success"` in run records
-- `lookupByName` error produces clean exit 2 instead of traceback
+### v0.4–v0.12 (unreleased bundle)
+- `disk.latency` via cgroup v2 `io.max`
+- `disk.fill`, `net.packet-loss`, `net.partition`, `vm.starve`
+- HTML report generator (`kvmchaos report`)
+- Run records: atomic writes, corrupt-record skip, `dry_run` outcome
+- Production hardening: SIGTERM revert, idempotent `del_root_qdisc`, bounds validation
+
+### v0.13 (unreleased)
+- `net.bandwidth` via `tc netem rate` on host tap device
+- `--rate <kbps>` flag on `inject`
+- `tap_device()` extracted to `tc.py` (no duplication across net fault files)
+- Lab-validated: inject/verify/revert all `ok`, outcome `success` (2026-04-23)
 
 ## Repo state
 
 - Git branch: `main`
-- Tests: 144 passing, 99% coverage
+- Tests: 310 passing, 98% coverage
 - Ruff: clean; format clean
 
 ## What's next
 
-- Lab-validate `disk.latency` on Fedora 43 host + RHEL 9.7 guest,
-  then tick the v0.4 acceptance box in `PLAN.md` and tag `v0.4.0`.
-- Backlog: `migration.abort`, HTML report generator.
+- Tag `v0.13.0` (or roll into a larger release tag).
+- Backlog: `disk.corrupt`, `migration.abort`, HTML report enhancements.

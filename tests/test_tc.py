@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import libvirt
 import pytest
 
 import kvmchaos.tc as tc
@@ -76,3 +77,54 @@ class TestShowQdisc:
                 capture_output=True,
                 text=True,
             )
+
+
+class TestTapDevice:
+    def test_returns_first_tap_device(self):
+        xml = """
+        <domain>
+          <devices>
+            <interface type='network'>
+              <target dev='vnet0'/>
+            </interface>
+          </devices>
+        </domain>
+        """
+        domain = MagicMock(spec=libvirt.virDomain)
+        domain.name.return_value = "testvm"
+        domain.XMLDesc.return_value = xml
+        assert tc.tap_device(domain) == "vnet0"
+
+    def test_raises_when_no_interface(self):
+        domain = MagicMock(spec=libvirt.virDomain)
+        domain.name.return_value = "testvm"
+        domain.XMLDesc.return_value = "<domain><devices></devices></domain>"
+        with pytest.raises(RuntimeError, match="no network interface"):
+            tc.tap_device(domain)
+
+
+class TestAddNetemRate:
+    def test_calls_tc_with_correct_args(self):
+        with patch("kvmchaos.tc.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            tc.add_netem_rate("vnet0", 1000)
+        cmd = mock_run.call_args[0][0]
+        assert cmd == [
+            "tc",
+            "qdisc",
+            "replace",
+            "dev",
+            "vnet0",
+            "root",
+            "netem",
+            "rate",
+            "1000kbit",
+        ]
+
+    def test_raises_on_tc_failure(self):
+        with patch("kvmchaos.tc.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1, stderr="RTNETLINK answers: No such file"
+            )
+            with pytest.raises(RuntimeError, match="tc command failed"):
+                tc.add_netem_rate("vnet99", 1000)
