@@ -340,6 +340,37 @@ def _is_remote(uri: str) -> bool:
     return host not in ("", "localhost", "127.0.0.1", "::1")
 
 
+_FAULT_BUILDERS: dict[str, Callable[..., object]] = {
+    "disk.latency": lambda bandwidth, **_: DiskLatencyFault(bandwidth_bps=bandwidth * 1_000_000),
+    "disk.fill": lambda size, **_: DiskFillFault(fill_bytes=size * 1024 * 1024),
+    "net.packet-loss": lambda loss, **_: NetPacketLossFault(loss_percent=loss),
+    "net.bandwidth": lambda rate, **_: NetBandwidthFault(rate_kbps=rate),
+    "net.corrupt": lambda corrupt, **_: NetCorruptFault(corrupt_percent=corrupt),
+    "clock.skew": lambda skew, **_: ClockSkewFault(skew_seconds=skew),
+}
+
+
+def _build_fault(fault_name: str, **params: int) -> object:
+    """Construct a fault instance, applying CLI params for parameterised faults.
+
+    Faults without tunable parameters (e.g. ``vm.pause``) return the shared
+    registry singleton. Parameterised faults are rebuilt from ``params`` via
+    :data:`_FAULT_BUILDERS`.
+
+    Args:
+        fault_name: Registered fault name.
+        **params: CLI option values (``bandwidth``, ``size``, ``loss``, ``rate``,
+            ``corrupt``, ``skew``). Each builder uses only the keys it needs.
+
+    Returns:
+        A fault instance implementing the ``Fault`` protocol.
+    """
+    builder = _FAULT_BUILDERS.get(fault_name)
+    if builder is None:
+        return FAULTS[fault_name]
+    return builder(**params)
+
+
 @app.command("inject")
 def inject_cmd(
     ctx: typer.Context,
@@ -368,7 +399,7 @@ def inject_cmd(
         max=1_048_576,
     ),
     loss: int = typer.Option(
-        50,
+        10,
         "--loss",
         "-l",
         help="Packet loss percentage (net.packet-loss only).",
@@ -422,22 +453,12 @@ def inject_cmd(
             err=True,
         )
         raise typer.Exit(code=2)
-    fault = FAULTS[fault_name]
-    if fault_name == "disk.latency":
-        fault = DiskLatencyFault(bandwidth_bps=bandwidth * 1_000_000)
-    elif fault_name == "disk.fill":
-        fault = DiskFillFault(fill_bytes=size * 1024 * 1024)
-    elif fault_name == "net.packet-loss":
-        fault = NetPacketLossFault(loss_percent=loss)
-    elif fault_name == "net.bandwidth":
-        fault = NetBandwidthFault(rate_kbps=rate)
-    elif fault_name == "net.corrupt":
-        fault = NetCorruptFault(corrupt_percent=corrupt)
-    elif fault_name == "clock.skew":
-        if skew == 0:
-            typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)
-            raise typer.Exit(code=2)
-        fault = ClockSkewFault(skew_seconds=skew)
+    if fault_name == "clock.skew" and skew == 0:
+        typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)
+        raise typer.Exit(code=2)
+    fault = _build_fault(
+        fault_name, bandwidth=bandwidth, size=size, loss=loss, rate=rate, corrupt=corrupt, skew=skew
+    )
 
     raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
     resolved_uri = resolve_uri(raw_uri)
