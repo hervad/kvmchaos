@@ -27,3 +27,6 @@ htmlcov/
 
 # State
 *.log
+
+# Worktrees
+.worktrees/
