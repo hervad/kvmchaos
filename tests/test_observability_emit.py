@@ -49,3 +49,53 @@ def test_kvmchaos_version_fallback_when_metadata_missing(monkeypatch) -> None:
 
     monkeypatch.setattr("kvmchaos.observability.events.version", _raise)
     assert events._kvmchaos_version() == "0.0.0+unknown"
+
+
+def test_emit_writes_json_line_and_calls_notifier(monkeypatch) -> None:
+    """`emit` writes one JSON line and forwards the same payload to the notifier."""
+    import io
+    import json
+    from unittest.mock import MagicMock
+
+    from kvmchaos.observability import emit, set_notifier
+    from kvmchaos.observability import logging as obs_logging
+    from kvmchaos.observability.notifier import Notifier
+
+    buf = io.StringIO()
+    monkeypatch.setattr("sys.stderr", buf)
+    obs_logging._reset_for_tests()
+    obs_logging.configure_stderr_logging(verbose=False)
+
+    fake = MagicMock(spec=Notifier)
+    set_notifier(fake)
+
+    emit(events.INJECT_START, fault="net.latency", vm="vm1")
+
+    line = buf.getvalue().strip()
+    record = json.loads(line)
+    assert record["event"] == "inject.start"
+    assert record["fault"] == "net.latency"
+
+    fake.notify.assert_called_once()
+    forwarded = fake.notify.call_args.args[0]
+    assert forwarded["event"] == "inject.start"
+    assert forwarded["fault"] == "net.latency"
+    assert forwarded["vm"] == "vm1"
+
+
+def test_emit_without_notifier_only_logs(monkeypatch) -> None:
+    """`emit` logs to stderr even when notifier is None."""
+    import io
+    import json
+
+    from kvmchaos.observability import emit, set_notifier
+    from kvmchaos.observability import logging as obs_logging
+
+    buf = io.StringIO()
+    monkeypatch.setattr("sys.stderr", buf)
+    obs_logging._reset_for_tests()
+    obs_logging.configure_stderr_logging(verbose=False)
+    set_notifier(None)
+    emit(events.INJECT_SUCCESS, fault="x", vm="y", elapsed_s=0.1)
+    record = json.loads(buf.getvalue().strip())
+    assert record["event"] == "inject.success"
