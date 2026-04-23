@@ -10,6 +10,7 @@ import pytest
 from kvmchaos.config import (
     AllowlistConfig,
     Config,
+    ConfigError,
     RateLimitConfig,
     count_injects_since,
     last_destructive_run,
@@ -189,3 +190,47 @@ class TestLastDestructiveRun:
     def test_returns_none_when_no_destructive(self):
         recs = [{"fault": "vm.pause", "started_at": datetime.now(UTC).isoformat()}]
         assert last_destructive_run(recs) is None
+
+
+class TestNotifierConfig:
+    def test_notifier_section_parsed(self, tmp_path: Path) -> None:
+        """A populated [notifier] section becomes a NotifierConfig."""
+        cfg_path = tmp_path / "config.toml"
+        cfg_path.write_text(
+            "[notifier]\n"
+            'webhook_url = "https://example.com/h"\n'
+            'auth_header = "Bearer t"\n'
+            "timeout_s = 5\n"
+            'events = ["inject.start", "inject.error"]\n',
+            encoding="utf-8",
+        )
+        cfg = load_config(cfg_path)
+        assert cfg.notifier.webhook_url == "https://example.com/h"
+        assert cfg.notifier.auth_header == "Bearer t"
+        assert cfg.notifier.timeout_s == 5
+        assert cfg.notifier.events == ("inject.start", "inject.error")
+
+    def test_notifier_section_absent_yields_disabled(self, tmp_path: Path) -> None:
+        """Missing [notifier] yields a disabled (no webhook) NotifierConfig."""
+        cfg_path = tmp_path / "config.toml"
+        cfg_path.write_text("[allowlist]\nvms = []\n", encoding="utf-8")
+        cfg = load_config(cfg_path)
+        assert cfg.notifier.webhook_url == ""
+        assert cfg.notifier.is_enabled() is False
+
+    def test_notifier_malformed_webhook_url_raises(self, tmp_path: Path) -> None:
+        """Non-string webhook_url is a ConfigError."""
+        cfg_path = tmp_path / "config.toml"
+        cfg_path.write_text("[notifier]\nwebhook_url = 42\n", encoding="utf-8")
+        with pytest.raises(ConfigError):
+            load_config(cfg_path)
+
+    def test_notifier_malformed_events_raises(self, tmp_path: Path) -> None:
+        """events must be a list of strings; a string scalar is a ConfigError."""
+        cfg_path = tmp_path / "config.toml"
+        cfg_path.write_text(
+            '[notifier]\nwebhook_url = "x"\nevents = "inject.start"\n',
+            encoding="utf-8",
+        )
+        with pytest.raises(ConfigError):
+            load_config(cfg_path)
