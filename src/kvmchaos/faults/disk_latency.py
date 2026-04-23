@@ -74,14 +74,19 @@ class DiskLatencyFault:
     def revert(self, domain: libvirt.virDomain) -> None:
         """Remove the io.max throttle, restoring full disk I/O speed.
 
+        If the QEMU process has exited since inject (e.g. the VM was force-stopped),
+        the cgroup is already gone and the throttle no longer applies. In that case
+        this method returns without error rather than raising.
+
         Args:
             domain: A live libvirt domain handle.
-
-        Raises:
-            RuntimeError: If the cgroup path cannot be resolved.
         """
-        major, minor = _disk_dev(domain)
-        io_max = _io_max_path(domain.name())
+        try:
+            major, minor = _disk_dev(domain)
+            io_max = _io_max_path(domain.name())
+        except FileNotFoundError, RuntimeError:
+            # QEMU exited; cgroup is already cleaned up — throttle is gone.
+            return
         io_max.write_text(f"{major}:{minor} rbps=max wbps=max\n")
 
 

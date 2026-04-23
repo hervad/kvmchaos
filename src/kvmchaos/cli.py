@@ -12,6 +12,7 @@ fault logic lives in `kvmchaos.faults`.
 from __future__ import annotations
 
 import json
+import signal
 import time
 import urllib.parse
 from collections.abc import Callable
@@ -297,8 +298,12 @@ def _record_id(runs_dir: Path, record: dict[str, object]) -> str:
     Mirrors the filename scheme in :func:`kvmchaos.runrecord.write_run_record`
     so callers can resolve the id back to a file without a second stat.
     """
-    dt = datetime.fromisoformat(str(record["started_at"])).astimezone(UTC)
-    compact = dt.strftime("%Y%m%dT%H%M%SZ")
+    raw_ts = record.get("started_at", "")
+    try:
+        dt = datetime.fromisoformat(str(raw_ts)).astimezone(UTC)
+        compact = dt.strftime("%Y%m%dT%H%M%SZ")
+    except ValueError, TypeError:
+        compact = str(raw_ts)
     fault_slug = str(record.get("fault", "")).replace(".", "-")
     return f"{compact}-{fault_slug}-{record.get('vm', '')}"
 
@@ -356,8 +361,9 @@ def inject_cmd(
         1024,
         "--size",
         "-s",
-        help="Fill size in MiB (disk.fill only).",
+        help="Fill size in MiB (disk.fill only). Max 1048576 MiB (1 TiB).",
         min=1,
+        max=1_048_576,
     ),
     loss: int = typer.Option(
         50,
@@ -370,7 +376,9 @@ def inject_cmd(
     skew: int = typer.Option(
         3600,
         "--skew",
-        help="Clock offset in seconds; negative shifts backward (clock.skew only).",
+        help="Clock skew in seconds (neg=backward). Non-zero; ±31536000s max.",
+        min=-31_536_000,
+        max=31_536_000,
     ),
 ) -> None:
     """Inject a fault into a VM, verify it took effect, then revert.
@@ -405,6 +413,9 @@ def inject_cmd(
     elif fault_name == "net.packet-loss":
         fault = NetPacketLossFault(loss_percent=loss)
     elif fault_name == "clock.skew":
+        if skew == 0:
+            typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)
+            raise typer.Exit(code=2)
         fault = ClockSkewFault(skew_seconds=skew)
 
     raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
@@ -464,6 +475,11 @@ def inject_cmd(
                 fault_name, vm, resolved_uri, dry_run, started_at, ended_at, steps
             )
             raise typer.Exit(code=1)
+
+        def _sigterm_handler(signum: int, frame: object) -> None:
+            raise KeyboardInterrupt
+
+        signal.signal(signal.SIGTERM, _sigterm_handler)
 
         interrupted = False
         try:

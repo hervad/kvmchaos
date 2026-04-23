@@ -146,6 +146,24 @@ class TestDiskLatencyRevert:
 
         assert io_max.read_text() == "8:0 rbps=max wbps=max\n"
 
+    def test_revert_tolerates_missing_cgroup(self):
+        domain = _mock_domain()
+        fault = DiskLatencyFault()
+        with patch(
+            "kvmchaos.faults.disk_latency._disk_dev",
+            side_effect=FileNotFoundError("no pid file"),
+        ):
+            fault.revert(domain)  # must not raise
+
+    def test_revert_tolerates_missing_cgroup_hierarchy(self):
+        domain = _mock_domain()
+        fault = DiskLatencyFault()
+        with patch(
+            "kvmchaos.faults.disk_latency._disk_dev",
+            side_effect=RuntimeError("cgroup not found"),
+        ):
+            fault.revert(domain)  # must not raise
+
 
 class TestDiskLatencyHelpers:
     def test_qemu_pid_raises_when_not_running(self):

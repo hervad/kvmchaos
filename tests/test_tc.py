@@ -38,9 +38,18 @@ class TestDelRootQdisc:
 
     def test_raises_runtime_error_on_nonzero_exit(self):
         with patch("kvmchaos.tc.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stderr="No such file")
+            mock_run.return_value = MagicMock(
+                returncode=1, stderr="RTNETLINK: operation not permitted"
+            )
             with pytest.raises(RuntimeError, match="tc command failed"):
                 tc.del_root_qdisc("vnet0")
+
+    def test_idempotent_when_no_qdisc_present(self):
+        with patch("kvmchaos.tc.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1, stderr="RTNETLINK answers: No such file or directory"
+            )
+            tc.del_root_qdisc("vnet0")  # must not raise
 
 
 class TestShowQdisc:

@@ -43,7 +43,18 @@ class TestVmFreezeHappyPath:
         with pytest.raises(RuntimeError, match="not throttled"):
             VmFreezeFault().verify(domain)
 
-    def test_revert_restores_unlimited_quota(self):
+    def test_revert_restores_pre_inject_quota(self):
+        pre_inject_quota = 50_000
+        domain = MagicMock(spec=libvirt.virDomain)
+        domain.name.return_value = "testvm"
+        domain.schedulerParameters.return_value = {"vcpu_quota": pre_inject_quota}
+        fault = VmFreezeFault()
+        fault.inject(domain)
+        domain.setSchedulerParameters.reset_mock()
+        fault.revert(domain)
+        domain.setSchedulerParameters.assert_called_once_with({"vcpu_quota": pre_inject_quota})
+
+    def test_revert_defaults_to_unlimited_when_inject_not_called(self):
         domain = self._mock_domain()
         VmFreezeFault().revert(domain)
         domain.setSchedulerParameters.assert_called_once_with({"vcpu_quota": _QUOTA_UNLIMITED})

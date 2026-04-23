@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -40,7 +41,8 @@ def load_records(runs_dir: Path) -> list[dict[str, object]]:
     for path in runs_dir.glob("*.json"):
         try:
             records.append(json.loads(path.read_text()))
-        except OSError, json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"warning: skipping corrupt record {path.name}: {exc}", file=sys.stderr)
             continue
     records.sort(key=lambda r: str(r.get("started_at", "")), reverse=True)
     return records

@@ -2,9 +2,7 @@
 
 Sets vcpu_quota to 5000 µs per 100 000 µs period (5% of one vCPU), which
 is a hard CFS bandwidth limit enforced by the kernel regardless of host load.
-Reverts to -1 (unlimited).
-
-Note: revert restores to unlimited (-1) regardless of any pre-inject quota.
+Revert restores the quota that was in place before inject was called.
 """
 
 from __future__ import annotations
@@ -21,8 +19,8 @@ _QUOTA_UNLIMITED: int = -1
 class VmFreezeFault:
     """Hard-caps a running VM's vCPU time to 5% via libvirt scheduler quota.
 
-    Implements the `Fault` protocol — stateless, operates on a provided
-    `virDomain` handle.
+    Implements the ``Fault`` protocol. Stateful: saves the pre-inject quota in
+    ``inject`` and restores it in ``revert``.
     """
 
     name: ClassVar[str] = "vm.freeze"
@@ -30,8 +28,12 @@ class VmFreezeFault:
     destructive: ClassVar[bool] = False
     local_only: ClassVar[bool] = False
 
+    def __init__(self) -> None:
+        """Initialise with no saved quota."""
+        self._original_quota: int = _QUOTA_UNLIMITED
+
     def inject(self, domain: libvirt.virDomain) -> None:
-        """Set vcpu_quota to 5% of one vCPU period.
+        """Save the current vcpu_quota then set it to 5% of one vCPU period.
 
         Args:
             domain: A live libvirt domain handle.
@@ -39,6 +41,8 @@ class VmFreezeFault:
         Raises:
             libvirt.libvirtError: If the scheduler call fails.
         """
+        params = domain.schedulerParameters()
+        self._original_quota = int(params.get("vcpu_quota", _QUOTA_UNLIMITED))
         domain.setSchedulerParameters({"vcpu_quota": _QUOTA_THROTTLED})
 
     def verify(self, domain: libvirt.virDomain) -> None:
@@ -59,7 +63,7 @@ class VmFreezeFault:
             )
 
     def revert(self, domain: libvirt.virDomain) -> None:
-        """Restore vcpu_quota to unlimited (-1).
+        """Restore vcpu_quota to the value saved during inject.
 
         Args:
             domain: A live libvirt domain handle.
@@ -67,4 +71,4 @@ class VmFreezeFault:
         Raises:
             libvirt.libvirtError: If the scheduler call fails.
         """
-        domain.setSchedulerParameters({"vcpu_quota": _QUOTA_UNLIMITED})
+        domain.setSchedulerParameters({"vcpu_quota": self._original_quota})

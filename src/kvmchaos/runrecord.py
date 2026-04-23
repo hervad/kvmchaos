@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import pwd
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -165,5 +166,10 @@ def write_run_record(record: dict[str, object], runs_dir: Path) -> Path:
     fault_slug = str(record["fault"]).replace(".", "-")
     filename = f"{compact}-{fault_slug}-{record['vm']}.json"
     path = runs_dir / filename
-    path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=runs_dir, suffix=".tmp", delete=False
+    ) as fh:
+        fh.write(json.dumps(record, indent=2))
+        tmp_path = Path(fh.name)
+    os.replace(tmp_path, path)
     return path

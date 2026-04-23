@@ -42,13 +42,24 @@ def add_netem_loss(dev: str, loss_percent: int) -> None:
 def del_root_qdisc(dev: str) -> None:
     """Remove the root qdisc from a network device, restoring the kernel default.
 
+    Idempotent: if no root qdisc is present (e.g. inject failed halfway through
+    or revert is called twice), the function returns without raising.
+
     Args:
         dev: Host network device name.
 
     Raises:
-        RuntimeError: If tc exits non-zero.
+        RuntimeError: If tc exits non-zero for a reason other than a missing qdisc.
     """
-    _run(["tc", "qdisc", "del", "dev", dev, "root"])
+    result = subprocess.run(
+        ["tc", "qdisc", "del", "dev", dev, "root"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 and "No such file or directory" not in result.stderr:
+        raise RuntimeError(
+            f"tc command failed: tc qdisc del dev {dev} root\n{result.stderr.strip()}"
+        )
 
 
 def show_qdisc(dev: str) -> str:

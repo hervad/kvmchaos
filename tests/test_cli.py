@@ -453,6 +453,14 @@ class TestClockSkewCli:
             )
         assert result.exit_code == 0
 
+    def test_skew_zero_rejected(self) -> None:
+        result = runner.invoke(
+            app,
+            ["inject", "--yes", "--skew", "0", "clock.skew", "test"],
+        )
+        assert result.exit_code == 2
+        assert "no-op" in result.output
+
 
 class TestNetPacketLossCli:
     def test_net_packet_loss_appears_in_list_faults(self) -> None:
