@@ -138,6 +138,27 @@ uv run kvmchaos runs show <id>
 uv run kvmchaos report --output report.html
 ```
 
+## Troubleshooting
+
+Run `kvmchaos doctor` first — it diagnoses the 90% case.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Operation not permitted` on net.* or disk.latency | Need root / CAP_NET_ADMIN | Run with `sudo /path/to/.venv/bin/kvmchaos` |
+| `failed to connect to the hypervisor` | User not in `libvirt` group | `sudo usermod -aG libvirt $USER && re-login` |
+| `tc: command not found` | Missing iproute2 | `sudo dnf install iproute` (Fedora/RHEL) |
+| `no network interface found for domain` | VM not running or no vNIC | `virsh start <vm>`, or check `virsh domiflist` |
+| `cgroups v2 hierarchy not found` | Host on cgroup v1 (RHEL 8 default) | Upgrade to v2 or skip disk.latency |
+| `qemu-guest-agent` calls fail for clock.skew | Agent not installed in guest | Install `qemu-guest-agent` inside the VM |
+| Run record written to root's HOME under sudo | `SUDO_USER` detection failed | Set `XDG_STATE_HOME` explicitly |
+| `kvmchaos: command not found` under sudo | `$PATH` not preserved | Use full path: `sudo /home/you/kvmchaos/.venv/bin/kvmchaos` |
+| Active netem qdisc after a failed revert | Revert crashed mid-run | `sudo kvmchaos abort-all --yes` |
+
+## Recipes
+
+See [docs/recipes/](docs/recipes/README.md) for worked examples — database
+failover, disk-full alerting, flaky networks, VM restart, memory pressure.
+
 ## Platform Notes
 
 - **Primary target:** RHEL 9 KVM host

@@ -1,0 +1,33 @@
+# kvmchaos experiment file
+#
+# Run with: kvmchaos run docs/examples/experiment.toml
+#
+# Each [[step]] is executed in order. A step failure aborts the experiment
+# unless the step opts in with `continue_on_failure = true`.
+#
+# Every inject flag has a corresponding TOML key. Defaults match the CLI:
+#   duration=20, bandwidth=1, size=1024, loss=10, rate=1000, corrupt=1, skew=3600
+#
+# Only `fault` and `vm` are required per step. Safety rails (allowlist,
+# rate limit) apply exactly as they do to `kvmchaos inject`.
+
+name = "database-failover-drill"
+description = "Partition the primary for 60s, then pause it briefly, to exercise failover + recovery."
+
+[[step]]
+fault = "net.partition"
+vm = "db-primary"
+duration = 60
+
+[[step]]
+fault = "vm.pause"
+vm = "db-primary"
+duration = 30
+
+[[step]]
+# Optional: tolerate a failure on this last sanity-check step without
+# aborting the whole run — useful for "nice to have" teardown.
+fault = "net.latency"
+vm = "db-replica"
+duration = 10
+continue_on_failure = true

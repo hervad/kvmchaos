@@ -783,3 +783,128 @@ class TestAbortAll:
             result = runner.invoke(app, ["abort-all"])
         assert result.exit_code == 1
         assert "Aborted" in result.output
+
+
+class TestRunExperiment:
+    def test_missing_file_exits_2(self, tmp_path) -> None:
+        result = runner.invoke(app, ["run", str(tmp_path / "nope.toml")])
+        assert result.exit_code == 2
+        assert "experiment" in result.output.lower()
+
+    def test_invalid_experiment_exits_2(self, tmp_path) -> None:
+        path = tmp_path / "e.toml"
+        path.write_text('[[step]]\nfault = "vm.pause"\nvm = "s1"\n')  # missing name
+        result = runner.invoke(app, ["run", str(path)])
+        assert result.exit_code == 2
+        assert "'name'" in result.output
+
+    def test_unknown_fault_in_step_exits_2(self, tmp_path) -> None:
+        path = tmp_path / "e.toml"
+        path.write_text(
+            'name = "x"\n\n[[step]]\nfault = "does.not.exist"\nvm = "s1"\n',
+        )
+        result = runner.invoke(app, ["run", str(path)])
+        assert result.exit_code == 2
+        assert "unknown fault" in result.output
+
+    def test_dry_run_prints_plan_and_executes_no_libvirt_calls(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        path = tmp_path / "e.toml"
+        path.write_text(
+            'name = "dry"\n\n[[step]]\nfault = "vm.pause"\nvm = "test"\nduration = 0\n',
+        )
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "run", "--dry-run", "--yes", str(path)],
+        )
+        assert result.exit_code == 0
+        assert "Experiment: dry" in result.output
+        assert "1 step(s)" in result.output
+        assert "Experiment complete" in result.output
+
+    def test_user_can_abort_confirm(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        path = tmp_path / "e.toml"
+        path.write_text(
+            'name = "abort"\n\n[[step]]\nfault = "vm.pause"\nvm = "test"\n',
+        )
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "run", str(path)],
+            input="n\n",
+        )
+        assert result.exit_code == 1
+        assert "Aborted" in result.output
+
+    def test_executes_all_steps_happy_path(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        path = tmp_path / "e.toml"
+        path.write_text(
+            'name = "happy"\n\n'
+            "[[step]]\n"
+            'fault = "vm.pause"\nvm = "test"\n'
+            "duration = 0\n\n"
+            "[[step]]\n"
+            'fault = "vm.pause"\nvm = "test"\n'
+            "duration = 0\n",
+        )
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "run", "--yes", str(path)],
+        )
+        assert result.exit_code == 0
+        # Confirm both steps ran: the experiment runner prints a banner per step.
+        assert "step 1/2" in result.output
+        assert "step 2/2" in result.output
+        assert "Experiment complete" in result.output
+
+    def test_allowlist_enforced_per_step(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        exp = tmp_path / "e.toml"
+        exp.write_text(
+            'name = "al"\n\n[[step]]\nfault = "vm.pause"\nvm = "test"\nduration = 0\n',
+        )
+        cfg = tmp_path / "config.toml"
+        cfg.write_text('[allowlist]\nvms = ["other-vm-only"]\n')
+        result = runner.invoke(
+            app,
+            [
+                "--connect",
+                "test:///default",
+                "run",
+                "--yes",
+                "--config",
+                str(cfg),
+                str(exp),
+            ],
+        )
+        assert result.exit_code == 1  # first step fails → experiment fails
+        assert "not in the allowlist" in result.output
+
+    def test_continue_on_failure_honoured(self, tmp_path, monkeypatch) -> None:
+        # Two steps; first targets a missing VM (exits 2), second is fine.
+        # continue_on_failure on step 1 → step 2 still runs → experiment
+        # exits 1 because a step failed, but step 2's record is written.
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        exp = tmp_path / "e.toml"
+        exp.write_text(
+            'name = "keep-going"\n\n'
+            "[[step]]\n"
+            'fault = "vm.pause"\nvm = "missing-vm"\n'
+            "duration = 0\n"
+            "continue_on_failure = true\n\n"
+            "[[step]]\n"
+            'fault = "vm.pause"\nvm = "test"\n'
+            "duration = 0\n",
+        )
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "run", "--yes", str(exp)],
+        )
+        # Overall exit code is 1 (a step failed), but step 2 still ran
+        assert result.exit_code == 1
+        assert "continuing" in result.output
+        runs_dir = tmp_path / "kvmchaos" / "runs"
+        records = list(runs_dir.glob("*.json"))
+        # step 2 should have written a record
+        assert len(records) >= 1

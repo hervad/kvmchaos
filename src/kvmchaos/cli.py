@@ -25,6 +25,7 @@ import typer
 from kvmchaos import __version__
 from kvmchaos.config import load_config, rate_limit_violation
 from kvmchaos.eventlog import configure_logging, log_event
+from kvmchaos.experiment import Step, load_experiment
 from kvmchaos.faults import FAULTS
 from kvmchaos.faults.base import Fault
 from kvmchaos.faults.clock_skew import ClockSkewFault
@@ -739,6 +740,246 @@ def inject_cmd(
             interrupted=interrupted,
         )
         if interrupted:
+            raise typer.Exit(code=1)
+
+
+@app.command("run")
+def run_cmd(
+    ctx: typer.Context,
+    experiment_path: Path = typer.Argument(
+        ..., metavar="EXPERIMENT", help="Path to a TOML experiment file."
+    ),
+    assume_yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Validate and print plan without touching libvirt."
+    ),
+    config_path: Path | None = typer.Option(
+        None,
+        "--config",
+        help="Path to config.toml (default: $XDG_CONFIG_HOME/kvmchaos/config.toml).",
+    ),
+    force: bool = typer.Option(False, "--force", help="Bypass allowlist and rate-limit checks."),
+) -> None:
+    """Run a TOML experiment: a sequence of ``inject`` steps.
+
+    Each step runs its full inject → verify → hold → revert cycle before
+    the next step begins. A step failure stops the experiment unless the
+    step sets ``continue_on_failure = true``.
+
+    See ``docs/examples/experiment.toml`` for schema and
+    ``docs/recipes/`` for worked examples.
+
+    Args:
+        ctx: Typer context; carries the ``--connect`` URI.
+        experiment_path: Path to a TOML experiment file.
+        assume_yes: If True, skip the per-experiment confirmation prompt.
+        dry_run: If True, validate everything but make no libvirt calls.
+        config_path: Optional override for the config file location.
+        force: If True, bypass allowlist and rate-limit checks.
+    """
+    configure_logging()
+
+    try:
+        experiment = load_experiment(experiment_path)
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(f"experiment error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    for i, step in enumerate(experiment.steps, start=1):
+        if step.fault not in FAULTS:
+            typer.echo(
+                f"experiment error: step {i} unknown fault {step.fault!r}. "
+                f"Known: {', '.join(sorted(FAULTS))}",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+    raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
+    resolved_uri = resolve_uri(raw_uri)
+
+    typer.echo(f"Experiment: {experiment.name}")
+    if experiment.description:
+        typer.echo(f"  {experiment.description}")
+    typer.echo(f"  {len(experiment.steps)} step(s), uri: {resolved_uri}")
+    for i, step in enumerate(experiment.steps, start=1):
+        marker = " [continue_on_failure]" if step.continue_on_failure else ""
+        typer.echo(f"  {i:>2}. {step.fault} on {step.vm} (duration={step.duration}s){marker}")
+
+    if not dry_run and not confirm("Run this experiment?", assume_yes=assume_yes):
+        typer.echo("Aborted.")
+        raise typer.Exit(code=1)
+
+    failed_steps = 0
+    for i, step in enumerate(experiment.steps, start=1):
+        typer.echo(f"\n--- step {i}/{len(experiment.steps)}: {step.fault} on {step.vm} ---")
+        try:
+            _run_experiment_step(
+                step,
+                resolved_uri=resolved_uri,
+                dry_run=dry_run,
+                config_path=config_path,
+                force=force,
+            )
+        except typer.Exit as exc:
+            failed_steps += 1
+            code = exc.exit_code if isinstance(exc.exit_code, int) else 1
+            if step.continue_on_failure:
+                typer.echo(
+                    f"step {i} failed (exit {code}); continuing (continue_on_failure=true).",
+                    err=True,
+                )
+                continue
+            typer.echo(f"step {i} failed (exit {code}); stopping experiment.", err=True)
+            raise typer.Exit(code=1) from exc
+
+    if failed_steps:
+        typer.echo(f"\nExperiment finished with {failed_steps} failure(s).", err=True)
+        raise typer.Exit(code=1)
+    typer.echo("\nExperiment complete.")
+
+
+def _run_experiment_step(
+    step: Step,
+    *,
+    resolved_uri: str,
+    dry_run: bool,
+    config_path: Path | None,
+    force: bool,
+) -> None:
+    """Execute a single experiment step.
+
+    Duplicates the core inject orchestration from ``inject_cmd`` (URI
+    check, safety, connect, inject/verify/hold/revert, record writing).
+    Extraction into a single helper is future work; the duplication is
+    contained and mechanically obvious.
+
+    Args:
+        step: Experiment step to execute.
+        resolved_uri: Already-resolved libvirt URI.
+        dry_run: If True, print plan only.
+        config_path: Optional config file override.
+        force: If True, bypass safety checks.
+
+    Raises:
+        typer.Exit: On any failure (propagated for experiment-level handling).
+    """
+    if step.fault == "clock.skew" and step.skew == 0:
+        typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)
+        raise typer.Exit(code=2)
+
+    fault = _build_fault(
+        step.fault,
+        bandwidth=step.bandwidth,
+        size=step.size,
+        loss=step.loss,
+        rate=step.rate,
+        corrupt=step.corrupt,
+        skew=step.skew,
+    )
+
+    if not force:
+        try:
+            cfg = load_config(config_path)
+        except FileNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        if not cfg.allowlist.is_allowed(step.vm):
+            typer.echo(
+                f"VM {step.vm!r} is not in the allowlist. "
+                "Add it to the config file or pass --force.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if cfg.rate_limit.is_configured():
+            records = load_records(default_runs_dir())
+            violation = rate_limit_violation(
+                cfg.rate_limit, records, is_destructive=fault.destructive
+            )
+            if violation is not None:
+                typer.echo(f"{violation}. Wait and retry, or pass --force.", err=True)
+                raise typer.Exit(code=2)
+
+    if fault.local_only and _is_remote(resolved_uri):
+        typer.echo(
+            f"{step.fault} requires local execution — run kvmchaos directly on the KVM host.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    with connect(resolved_uri) as conn:
+        try:
+            domain = conn.lookupByName(step.vm)
+        except libvirt.libvirtError as exc:
+            typer.echo(f"VM '{step.vm}' not found: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+
+        started_at = datetime.now(UTC)
+        steps_records: list[dict[str, object]] = []
+
+        inject_step = _run_step(
+            fault.inject,
+            domain,
+            action="inject",
+            fault_name=step.fault,
+            vm=step.vm,
+            dry_run=dry_run,
+        )
+        steps_records.append(inject_step)
+        if inject_step["result"] == "fail":
+            ended_at = datetime.now(UTC)
+            _write_and_print_record(
+                step.fault, step.vm, resolved_uri, dry_run, started_at, ended_at, steps_records
+            )
+            raise typer.Exit(code=1)
+
+        verify_step = _run_step(
+            fault.verify,
+            domain,
+            action="verify",
+            fault_name=step.fault,
+            vm=step.vm,
+            dry_run=dry_run,
+        )
+        steps_records.append(verify_step)
+        if verify_step["result"] == "fail":
+            revert_step = _run_step(
+                fault.revert,
+                domain,
+                action="revert",
+                fault_name=step.fault,
+                vm=step.vm,
+                dry_run=dry_run,
+            )
+            steps_records.append(revert_step)
+            ended_at = datetime.now(UTC)
+            _write_and_print_record(
+                step.fault, step.vm, resolved_uri, dry_run, started_at, ended_at, steps_records
+            )
+            raise typer.Exit(code=1)
+
+        if dry_run:
+            typer.echo(f"[dry-run] would: hold {step.fault} on {step.vm} for {step.duration}s")
+        else:
+            typer.echo(f"Holding '{step.fault}' on '{step.vm}' for {step.duration}s …")
+            try:
+                time.sleep(step.duration)
+            except KeyboardInterrupt:
+                typer.echo("Hold interrupted; reverting.", err=True)
+
+        revert_step = _run_step(
+            fault.revert,
+            domain,
+            action="revert",
+            fault_name=step.fault,
+            vm=step.vm,
+            dry_run=dry_run,
+        )
+        steps_records.append(revert_step)
+        ended_at = datetime.now(UTC)
+        _write_and_print_record(
+            step.fault, step.vm, resolved_uri, dry_run, started_at, ended_at, steps_records
+        )
+        if revert_step["result"] == "fail":
             raise typer.Exit(code=1)
 
 
