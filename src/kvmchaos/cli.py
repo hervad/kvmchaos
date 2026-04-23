@@ -29,6 +29,7 @@ from kvmchaos.faults.clock_skew import ClockSkewFault
 from kvmchaos.faults.disk_fill import DiskFillFault
 from kvmchaos.faults.disk_latency import DiskLatencyFault
 from kvmchaos.faults.net_bandwidth import NetBandwidthFault
+from kvmchaos.faults.net_corrupt import NetCorruptFault
 from kvmchaos.faults.net_packet_loss import NetPacketLossFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
 from kvmchaos.report import generate as generate_report
@@ -380,6 +381,13 @@ def inject_cmd(
         help="Bandwidth cap in kbps (net.bandwidth only).",
         min=1,
     ),
+    corrupt: int = typer.Option(
+        1,
+        "--corrupt",
+        help="Packet corruption percentage (net.corrupt only).",
+        min=1,
+        max=100,
+    ),
     skew: int = typer.Option(
         3600,
         "--skew",
@@ -403,6 +411,7 @@ def inject_cmd(
         size: Fill size in MiB, used only by disk.fill.
         loss: Packet loss percentage, used only by net.packet-loss.
         rate: Bandwidth cap in kbps, used only by net.bandwidth.
+        corrupt: Packet corruption percentage, used only by net.corrupt.
         skew: Clock offset in seconds, used only by clock.skew.
     """
     configure_logging()
@@ -422,6 +431,8 @@ def inject_cmd(
         fault = NetPacketLossFault(loss_percent=loss)
     elif fault_name == "net.bandwidth":
         fault = NetBandwidthFault(rate_kbps=rate)
+    elif fault_name == "net.corrupt":
+        fault = NetCorruptFault(corrupt_percent=corrupt)
     elif fault_name == "clock.skew":
         if skew == 0:
             typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)
