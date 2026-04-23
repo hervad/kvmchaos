@@ -1,11 +1,15 @@
-"""Tests for net.latency fault."""
+"""Tests for net.latency fault.
+
+Mocks at the ``subprocess.run`` boundary rather than at ``tc.add_netem_*``.
+This tests the externally-observable effect (the shell command that runs) and
+is robust against refactors of the ``tc`` module's internal helper functions.
+"""
 
 from unittest.mock import MagicMock, patch
 
 import libvirt
 import pytest
 
-import kvmchaos.tc as tc
 from kvmchaos.faults.net_latency import NetLatencyFault
 
 _XML_ONE_IFACE = """
@@ -28,6 +32,11 @@ def _mock_domain(xml: str = _XML_ONE_IFACE) -> MagicMock:
     return domain
 
 
+def _tc_result(returncode: int = 0, stdout: str = "", stderr: str = "") -> MagicMock:
+    """Build a fake subprocess.run CompletedProcess with the given return code and streams."""
+    return MagicMock(returncode=returncode, stdout=stdout, stderr=stderr)
+
+
 class TestNetLatencyMetadata:
     def test_name(self):
         assert NetLatencyFault.name == "net.latency"
@@ -40,30 +49,40 @@ class TestNetLatencyMetadata:
 
 
 class TestNetLatencyHappyPath:
-    def test_inject_calls_add_netem_delay(self):
+    def test_inject_runs_tc_netem_delay(self):
         domain = _mock_domain()
-        with patch.object(tc, "add_netem_delay") as mock_add:
+        with patch("subprocess.run", return_value=_tc_result()) as mock_run:
             NetLatencyFault().inject(domain)
-            mock_add.assert_called_once_with("vnet0", 200)
+        mock_run.assert_called_once_with(
+            ["tc", "qdisc", "replace", "dev", "vnet0", "root", "netem", "delay", "200ms"],
+            capture_output=True,
+            text=True,
+        )
 
     def test_verify_passes_when_netem_present(self):
         domain = _mock_domain()
-        with patch.object(tc, "show_qdisc", return_value="qdisc netem 8001: root refcnt 2"):
+        with patch(
+            "subprocess.run", return_value=_tc_result(stdout="qdisc netem 8001: root refcnt 2")
+        ):
             NetLatencyFault().verify(domain)  # must not raise
 
     def test_verify_raises_when_netem_absent(self):
         domain = _mock_domain()
         with (
-            patch.object(tc, "show_qdisc", return_value="qdisc fq_codel 0: root"),
+            patch("subprocess.run", return_value=_tc_result(stdout="qdisc fq_codel 0: root")),
             pytest.raises(RuntimeError, match="netem not active"),
         ):
             NetLatencyFault().verify(domain)
 
-    def test_revert_calls_del_root_qdisc(self):
+    def test_revert_runs_tc_qdisc_del(self):
         domain = _mock_domain()
-        with patch.object(tc, "del_root_qdisc") as mock_del:
+        with patch("subprocess.run", return_value=_tc_result()) as mock_run:
             NetLatencyFault().revert(domain)
-            mock_del.assert_called_once_with("vnet0")
+        mock_run.assert_called_once_with(
+            ["tc", "qdisc", "del", "dev", "vnet0", "root"],
+            capture_output=True,
+            text=True,
+        )
 
 
 class TestNetLatencyNoInterface:
@@ -84,18 +103,24 @@ class TestNetLatencyNoInterface:
 
 
 class TestNetLatencyErrors:
-    def test_inject_propagates_tc_error(self):
+    def test_inject_raises_runtime_error_on_tc_failure(self):
         domain = _mock_domain()
         with (
-            patch.object(tc, "add_netem_delay", side_effect=RuntimeError("tc failed")),
-            pytest.raises(RuntimeError, match="tc failed"),
+            patch(
+                "subprocess.run",
+                return_value=_tc_result(returncode=1, stderr="Operation not permitted"),
+            ),
+            pytest.raises(RuntimeError, match="Operation not permitted"),
         ):
             NetLatencyFault().inject(domain)
 
-    def test_revert_propagates_tc_error(self):
+    def test_revert_raises_runtime_error_on_tc_failure(self):
         domain = _mock_domain()
         with (
-            patch.object(tc, "del_root_qdisc", side_effect=RuntimeError("tc failed")),
-            pytest.raises(RuntimeError, match="tc failed"),
+            patch(
+                "subprocess.run",
+                return_value=_tc_result(returncode=1, stderr="permission denied"),
+            ),
+            pytest.raises(RuntimeError, match="permission denied"),
         ):
             NetLatencyFault().revert(domain)

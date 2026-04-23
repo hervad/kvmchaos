@@ -1,4 +1,9 @@
-"""Tests for net.bandwidth fault."""
+"""Tests for net.bandwidth fault.
+
+Mocks at the ``subprocess.run`` boundary rather than at ``tc.add_netem_*``.
+This tests the externally-observable effect (the shell command that runs) and
+is robust against refactors of the ``tc`` module's internal helper functions.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +12,6 @@ from unittest.mock import MagicMock, patch
 import libvirt
 import pytest
 
-import kvmchaos.tc as tc
 from kvmchaos.faults.net_bandwidth import NetBandwidthFault
 
 _XML = """
@@ -28,6 +32,10 @@ def _mock_domain(xml: str = _XML) -> MagicMock:
     domain.name.return_value = "server1"
     domain.XMLDesc.return_value = xml
     return domain
+
+
+def _tc_result(returncode: int = 0, stdout: str = "", stderr: str = "") -> MagicMock:
+    return MagicMock(returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 class TestNetBandwidthMetadata:
@@ -51,29 +59,38 @@ class TestNetBandwidthMetadata:
 
 
 class TestNetBandwidthHappyPath:
-    def test_inject_calls_add_netem_rate(self):
+    def test_inject_runs_tc_netem_rate(self):
         domain = _mock_domain()
-        with patch.object(tc, "add_netem_rate") as mock_add:
+        with patch("subprocess.run", return_value=_tc_result()) as mock_run:
             NetBandwidthFault().inject(domain)
-        mock_add.assert_called_once_with("vnet0", 1000)
+        mock_run.assert_called_once_with(
+            ["tc", "qdisc", "replace", "dev", "vnet0", "root", "netem", "rate", "1000kbit"],
+            capture_output=True,
+            text=True,
+        )
 
     def test_inject_passes_custom_rate(self):
         domain = _mock_domain()
-        with patch.object(tc, "add_netem_rate") as mock_add:
+        with patch("subprocess.run", return_value=_tc_result()) as mock_run:
             NetBandwidthFault(rate_kbps=256).inject(domain)
-        mock_add.assert_called_once_with("vnet0", 256)
+        mock_run.assert_called_once_with(
+            ["tc", "qdisc", "replace", "dev", "vnet0", "root", "netem", "rate", "256kbit"],
+            capture_output=True,
+            text=True,
+        )
 
     def test_verify_passes_when_netem_rate_present(self):
         domain = _mock_domain()
-        with patch.object(
-            tc, "show_qdisc", return_value="qdisc netem 8001: root refcnt 2 rate 1000Kbit"
+        with patch(
+            "subprocess.run",
+            return_value=_tc_result(stdout="qdisc netem 8001: root refcnt 2 rate 1000Kbit"),
         ):
             NetBandwidthFault().verify(domain)  # must not raise
 
     def test_verify_raises_when_netem_absent(self):
         domain = _mock_domain()
         with (
-            patch.object(tc, "show_qdisc", return_value="qdisc pfifo_fast 0: root"),
+            patch("subprocess.run", return_value=_tc_result(stdout="qdisc pfifo_fast 0: root")),
             pytest.raises(RuntimeError, match="netem not active"),
         ):
             NetBandwidthFault().verify(domain)
@@ -81,39 +98,43 @@ class TestNetBandwidthHappyPath:
     def test_verify_raises_when_rate_absent(self):
         domain = _mock_domain()
         with (
-            patch.object(tc, "show_qdisc", return_value="qdisc netem 8001: root delay 200ms"),
+            patch(
+                "subprocess.run",
+                return_value=_tc_result(stdout="qdisc netem 8001: root delay 200ms"),
+            ),
             pytest.raises(RuntimeError, match="bandwidth limit not active"),
         ):
             NetBandwidthFault().verify(domain)
 
-    def test_revert_calls_del_root_qdisc(self):
+    def test_revert_runs_tc_qdisc_del(self):
         domain = _mock_domain()
-        with patch.object(tc, "del_root_qdisc") as mock_del:
+        with patch("subprocess.run", return_value=_tc_result()) as mock_run:
             NetBandwidthFault().revert(domain)
-        mock_del.assert_called_once_with("vnet0")
+        mock_run.assert_called_once_with(
+            ["tc", "qdisc", "del", "dev", "vnet0", "root"],
+            capture_output=True,
+            text=True,
+        )
 
 
 class TestNetBandwidthErrorPaths:
     def test_inject_raises_when_no_interface(self):
         domain = _mock_domain(_XML_NO_IFACE)
-        with (
-            patch.object(tc, "add_netem_rate"),
-            pytest.raises(RuntimeError, match="no network interface"),
-        ):
+        with pytest.raises(RuntimeError, match="no network interface"):
             NetBandwidthFault().inject(domain)
 
     def test_revert_raises_when_no_interface(self):
         domain = _mock_domain(_XML_NO_IFACE)
-        with (
-            patch.object(tc, "del_root_qdisc"),
-            pytest.raises(RuntimeError, match="no network interface"),
-        ):
+        with pytest.raises(RuntimeError, match="no network interface"):
             NetBandwidthFault().revert(domain)
 
-    def test_inject_propagates_tc_error(self):
+    def test_inject_raises_runtime_error_on_tc_failure(self):
         domain = _mock_domain()
         with (
-            patch.object(tc, "add_netem_rate", side_effect=RuntimeError("tc failed")),
-            pytest.raises(RuntimeError, match="tc failed"),
+            patch(
+                "subprocess.run",
+                return_value=_tc_result(returncode=1, stderr="Operation not permitted"),
+            ),
+            pytest.raises(RuntimeError, match="Operation not permitted"),
         ):
             NetBandwidthFault().inject(domain)
