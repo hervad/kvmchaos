@@ -61,3 +61,27 @@ def test_inject_emits_start_success_revert_success(
     assert start_call.args[0]["fault"] == "vm.pause"
     assert start_call.args[0]["vm"] == "test"
     assert start_call.args[0]["duration_s"] == 0
+
+
+def test_run_emits_experiment_start_and_end(
+    captured_notifier: MagicMock, tmp_path: pytest.TempPathFactory
+) -> None:
+    recipe = tmp_path / "exp.toml"
+    recipe.write_text(
+        'name = "test-exp"\n[[step]]\nfault = "vm.pause"\nvm = "test"\nduration_s = 0\n',
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["--connect", "test:///default", "run", "--yes", str(recipe)])
+    assert result.exit_code == 0, result.output
+    seq = _events_for(captured_notifier)
+    assert seq[0] == ev.EXPERIMENT_START
+    assert seq[-1] == ev.EXPERIMENT_END
+    end_call = next(
+        c
+        for c in captured_notifier.notify.call_args_list
+        if c.args[0]["event"] == ev.EXPERIMENT_END
+    )
+    assert end_call.args[0]["status"] == "ok"
+    assert end_call.args[0]["recipe_path"].endswith("exp.toml")
+    assert isinstance(end_call.args[0]["elapsed_s"], (int, float))

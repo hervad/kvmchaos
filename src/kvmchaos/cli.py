@@ -824,28 +824,47 @@ def run_cmd(
         typer.echo("Aborted.")
         raise typer.Exit(code=1)
 
+    exp_t0 = time.monotonic()
+    exp_status = "ok"
+    _obs_emit(
+        obs_events.EXPERIMENT_START,
+        recipe_path=str(experiment_path),
+        step_count=len(experiment.steps),
+    )
+
     failed_steps = 0
-    for i, step in enumerate(experiment.steps, start=1):
-        typer.echo(f"\n--- step {i}/{len(experiment.steps)}: {step.fault} on {step.vm} ---")
-        try:
-            _run_experiment_step(
-                step,
-                resolved_uri=resolved_uri,
-                dry_run=dry_run,
-                config_path=config_path,
-                force=force,
-            )
-        except typer.Exit as exc:
-            failed_steps += 1
-            code = exc.exit_code if isinstance(exc.exit_code, int) else 1
-            if step.continue_on_failure:
-                typer.echo(
-                    f"step {i} failed (exit {code}); continuing (continue_on_failure=true).",
-                    err=True,
+    try:
+        for i, step in enumerate(experiment.steps, start=1):
+            typer.echo(f"\n--- step {i}/{len(experiment.steps)}: {step.fault} on {step.vm} ---")
+            try:
+                _run_experiment_step(
+                    step,
+                    resolved_uri=resolved_uri,
+                    dry_run=dry_run,
+                    config_path=config_path,
+                    force=force,
                 )
-                continue
-            typer.echo(f"step {i} failed (exit {code}); stopping experiment.", err=True)
-            raise typer.Exit(code=1) from exc
+            except typer.Exit as exc:
+                failed_steps += 1
+                code = exc.exit_code if isinstance(exc.exit_code, int) else 1
+                if step.continue_on_failure:
+                    typer.echo(
+                        f"step {i} failed (exit {code}); continuing (continue_on_failure=true).",
+                        err=True,
+                    )
+                    continue
+                typer.echo(f"step {i} failed (exit {code}); stopping experiment.", err=True)
+                raise typer.Exit(code=1) from exc
+    except Exception:
+        exp_status = "error"
+        raise
+    finally:
+        _obs_emit(
+            obs_events.EXPERIMENT_END,
+            recipe_path=str(experiment_path),
+            status=exp_status,
+            elapsed_s=round(time.monotonic() - exp_t0, 3),
+        )
 
     if failed_steps:
         typer.echo(f"\nExperiment finished with {failed_steps} failure(s).", err=True)
