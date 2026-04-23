@@ -175,28 +175,28 @@ Findings from production readiness audit (2026-04-23). Prioritised for RHEL 9 pr
 
 ### HIGH — could leave VMs broken indefinitely
 
-- [ ] **SIGTERM triggers revert** (`cli.py`) — install `signal.SIGTERM` handler that raises
+- [x] **SIGTERM triggers revert** (`cli.py`) — install `signal.SIGTERM` handler that raises
       `KeyboardInterrupt` so the `finally` block fires on systemd stop / `kill <pid>`
-- [ ] **`disk.latency` revert tolerates missing cgroup** (`disk_latency.py`) — if QEMU restarts
+- [x] **`disk.latency` revert tolerates missing cgroup** (`disk_latency.py`) — if QEMU restarts
       between inject and revert, the cgroup PID changes and `_io_max_path()` raises
       `FileNotFoundError`; revert must not leave the throttle in place
-- [ ] **`vm.freeze` revert restores original quota** (`vm_freeze.py`) — hard-codes `-1`
+- [x] **`vm.freeze` revert restores original quota** (`vm_freeze.py`) — hard-codes `-1`
       (unlimited); must read and save the pre-inject vCPU quota and restore it on revert
 
 ### MEDIUM — operational rough edges
 
-- [ ] **Atomic run record writes** (`runrecord.py:168`) — `write_text()` is not atomic;
+- [x] **Atomic run record writes** (`runrecord.py:168`) — `write_text()` is not atomic;
       a mid-write kill leaves a corrupt JSON that breaks `runs list`; use `.tmp` + `os.replace()`
-- [ ] **`del_root_qdisc` tolerates missing qdisc** (`tc.py`) — raises if no qdisc exists
+- [x] **`del_root_qdisc` tolerates missing qdisc** (`tc.py`) — raises if no qdisc exists
       (e.g. inject failed halfway); revert should be idempotent like `disk.fill.revert`
-- [ ] **`--skew` bounds validation** (`cli.py`) — no `min`/`max`; `--skew 0` is a silent
+- [x] **`--skew` bounds validation** (`cli.py`) — no `min`/`max`; `--skew 0` is a silent
       no-op; extreme values go unchecked; add `min=-86400*365`, `max=86400*365` or similar
 
 ### LOW
 
-- [ ] **`runs list` skips corrupt records** (`cli.py`) — `record["started_at"]` KeyError on
+- [x] **`runs list` skips corrupt records** (`cli.py`) — `record["started_at"]` KeyError on
       hand-edited or truncated files; use `.get()` with a skip-and-warn fallback
-- [ ] **`--size` upper cap for `disk.fill`** (`cli.py`) — no upper bound; absurd values
+- [x] **`--size` upper cap for `disk.fill`** (`cli.py`) — no upper bound; absurd values
       (e.g. `--size 2147483647`) attempt a 2 PiB allocation
 
 ## Backlog (post-v0.11, not scheduled)
