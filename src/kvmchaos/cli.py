@@ -112,6 +112,95 @@ def list_faults() -> None:
         typer.echo(f"{name:<{col_name}}  [{marker:<11}]  {fault.description}")
 
 
+@app.command("doctor")
+def doctor_cmd(ctx: typer.Context) -> None:
+    """Diagnose the most common first-run environment problems.
+
+    Checks (in order):
+
+    * ``tc`` binary is on PATH (net.* faults)
+    * ``cgroup2`` is mounted at ``/sys/fs/cgroup`` (disk.latency)
+    * user is in the ``libvirt`` group (required for unauthenticated local conn)
+    * libvirtd is reachable on the resolved URI
+    * the runs directory is writable
+
+    Exits 0 if all checks pass, 1 if any warn, 2 if any fail.
+    """
+    import grp
+    import os
+    import pwd
+    import shutil
+
+    from kvmchaos.runrecord import default_runs_dir
+
+    uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
+    resolved = resolve_uri(uri)
+    fail = False
+    warn = False
+
+    def check(label: str, ok: bool, hint: str = "") -> None:
+        nonlocal fail
+        marker = "ok  " if ok else "FAIL"
+        typer.echo(f"  [{marker}] {label}")
+        if not ok:
+            fail = True
+            if hint:
+                typer.echo(f"         hint: {hint}")
+
+    typer.echo(f"kvmchaos doctor (uri: {resolved})")
+    check(
+        "tc binary on PATH",
+        shutil.which("tc") is not None,
+        "install iproute2 (Fedora/RHEL: `sudo dnf install iproute`)",
+    )
+    check(
+        "cgroup v2 mounted at /sys/fs/cgroup",
+        Path("/sys/fs/cgroup/cgroup.controllers").is_file(),
+        "RHEL 8 defaults to cgroup v1; disk.latency requires v2",
+    )
+
+    # libvirt group membership (skip when we're root — root doesn't need the group)
+    if os.geteuid() != 0:
+        try:
+            libvirt_gid = grp.getgrnam("libvirt").gr_gid
+            user_gids = [
+                g.gr_gid for g in grp.getgrall() if pwd.getpwuid(os.getuid()).pw_name in g.gr_mem
+            ]
+            in_group = libvirt_gid in user_gids or libvirt_gid in os.getgroups()
+            check(
+                "user is in libvirt group",
+                in_group,
+                "run: sudo usermod -aG libvirt $USER && re-login",
+            )
+        except KeyError:
+            typer.echo("  [warn] libvirt group not found on system")
+            warn = True
+
+    # libvirtd reachability
+    try:
+        with connect(resolved) as conn:
+            conn.getHostname()
+        check("libvirtd reachable", ok=True)
+    except (OSError, libvirt.libvirtError) as exc:
+        check("libvirtd reachable", ok=False, hint=f"{exc}")
+
+    # Runs dir writable
+    runs_dir = default_runs_dir()
+    try:
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        probe = runs_dir / ".doctor-probe"
+        probe.write_text("")
+        probe.unlink()
+        check(f"runs dir writable ({runs_dir})", ok=True)
+    except OSError as exc:
+        check(f"runs dir writable ({runs_dir})", ok=False, hint=str(exc))
+
+    if fail:
+        raise typer.Exit(code=2)
+    if warn:
+        raise typer.Exit(code=1)
+
+
 @app.command("report")
 def report_cmd(
     output: Path = typer.Option(

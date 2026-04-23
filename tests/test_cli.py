@@ -34,6 +34,28 @@ class TestListFaults:
         assert "vm.kill" in result.stdout
 
 
+class TestDoctor:
+    def test_runs_and_prints_checks(self, tmp_path, monkeypatch):
+        # Use the test:/// URI so libvirt is always reachable, and point the
+        # runs dir at a tmp path so the write probe succeeds.
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        result = runner.invoke(app, ["--connect", "test:///default", "doctor"])
+        assert "kvmchaos doctor" in result.stdout
+        assert "tc binary on PATH" in result.stdout
+        assert "libvirtd reachable" in result.stdout
+        assert "runs dir writable" in result.stdout
+        # exit may be 0 or 1 depending on host (e.g. missing libvirt group in CI)
+        assert result.exit_code in (0, 1, 2)
+
+    def test_reports_libvirt_unreachable(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        result = runner.invoke(app, ["--connect", "qemu+tcp://127.0.0.1:1/system", "doctor"])
+        # exit 2 because libvirtd will fail to connect
+        assert result.exit_code == 2
+        assert "libvirtd reachable" in result.stdout
+        assert "FAIL" in result.stdout
+
+
 class TestStateName:
     def test_known_states(self):
         from kvmchaos.cli import _state_name
