@@ -220,7 +220,8 @@ Findings from production readiness audit (2026-04-23). Prioritised for RHEL 9 pr
 
 ## Backlog (post-v0.11, not scheduled)
 
-- `disk.corrupt` — targeted block-level corruption (high risk, needs design)
+- `disk.corrupt` — deferred; requires raw disk images or a secondary non-root disk.
+  qcow2 images cannot be safely wrapped in dm-flakey (see design spec 2026-04-23).
 - `migration.abort` — deferred; requires a second KVM host (or a nested-KVM
   lab setup) to produce an in-flight migration to cancel. Revisit when the
   lab grows beyond a single hypervisor.
