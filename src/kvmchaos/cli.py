@@ -871,6 +871,8 @@ def run_cmd(
         exp_status = "error"
         raise
     finally:
+        if exp_status == "ok" and failed_steps > 0:
+            exp_status = "partial"
         _obs_emit(
             obs_events.EXPERIMENT_END,
             recipe_path=str(experiment_path),

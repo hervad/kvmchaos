@@ -80,6 +80,41 @@ def test_run_emits_experiment_start_and_end(
     assert isinstance(end_call.args[0]["elapsed_s"], (int, float))
 
 
+def test_run_emits_partial_status_on_continued_failure(
+    captured_notifier: MagicMock, tmp_path: pytest.TempPathFactory
+) -> None:
+    """experiment.end carries status='partial' when a step fails with continue_on_failure=true."""
+    recipe = tmp_path / "partial.toml"
+    recipe.write_text(
+        (
+            'name = "partial-exp"\n'
+            "[[step]]\n"
+            'fault = "vm.pause"\n'
+            'vm = "nonexistent-vm-xyz"\n'
+            "duration_s = 0\n"
+            "continue_on_failure = true\n"
+            "[[step]]\n"
+            'fault = "vm.pause"\n'
+            'vm = "test"\n'
+            "duration_s = 0\n"
+        ),
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["--connect", "test:///default", "run", "--yes", str(recipe)])
+    # exits with code 1 because there was a failed step, but experiment ran to completion
+    assert result.exit_code == 1
+    seq = _events_for(captured_notifier)
+    assert seq[0] == ev.EXPERIMENT_START
+    assert seq[-1] == ev.EXPERIMENT_END
+    end_call = next(
+        c
+        for c in captured_notifier.notify.call_args_list
+        if c.args[0]["event"] == ev.EXPERIMENT_END
+    )
+    assert end_call.args[0]["status"] == "partial"
+
+
 def test_root_callback_initialises_observability(monkeypatch: pytest.MonkeyPatch) -> None:
     """`kvmchaos list-faults` triggers logging setup without errors."""
     import logging as _logging
