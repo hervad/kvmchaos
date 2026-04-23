@@ -88,6 +88,11 @@ def _root(
         "--connect",
         help="libvirt URI (overrides LIBVIRT_DEFAULT_URI).",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Enable DEBUG-level observability logging.",
+    ),
 ) -> None:
     """Root callback — stashes --connect URI on the Typer context.
 
@@ -95,16 +100,13 @@ def _root(
         ctx: Typer context object; used to pass the connect URI to subcommands.
         version: If True, print version and exit (handled by eager callback).
         connect_uri: libvirt URI override. Stored on ctx.obj for subcommands.
+        verbose: If True, enable DEBUG-level observability logging.
     """
     ctx.ensure_object(dict)
     ctx.obj[_CTX_KEY] = connect_uri
-    obs_logging.configure_stderr_logging(verbose=False)
-    import sys as _sys
-
-    _emit_mod = _sys.modules.get("kvmchaos.observability.emit")
-    if _emit_mod is not None and getattr(_emit_mod, "_NOTIFIER", None) is None:
-        cfg = load_config(None)
-        _obs_set_notifier(Notifier(cfg.notifier))
+    obs_logging.configure_stderr_logging(verbose=verbose)
+    cfg = load_config(None)
+    _obs_set_notifier(Notifier(cfg.notifier))
 
 
 @app.command("list-vms")

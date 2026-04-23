@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,18 +11,12 @@ from kvmchaos.cli import app
 from kvmchaos.observability import events as ev
 from kvmchaos.observability.notifier import Notifier
 
-# The package __init__ re-exports `emit` as a bare function, so a plain
-# `import kvmchaos.observability.emit as emit_mod` resolves to the function.
-# importlib.import_module gives us the actual submodule object so that
-# monkeypatch can set _NOTIFIER on the correct namespace.
-emit_mod = importlib.import_module("kvmchaos.observability.emit")
-
 
 @pytest.fixture
 def captured_notifier(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Install a mock Notifier and return it for assertion."""
     fake = MagicMock(spec=Notifier)
-    monkeypatch.setattr(emit_mod, "_NOTIFIER", fake)
+    monkeypatch.setattr("kvmchaos.cli.Notifier", lambda cfg: fake)
     return fake
 
 
