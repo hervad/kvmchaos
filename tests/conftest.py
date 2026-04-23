@@ -1,10 +1,15 @@
 """Shared pytest fixtures using libvirt's in-process test driver."""
 
+from __future__ import annotations
+
 import contextlib
+import logging
 from collections.abc import Iterator
 
 import libvirt
 import pytest
+
+from kvmchaos.observability import logging as obs_logging
 
 
 @pytest.fixture
@@ -42,3 +47,22 @@ def _ensure_running(domain: libvirt.virDomain) -> None:
         domain.resume()
     elif state == libvirt.VIR_DOMAIN_SHUTOFF:
         domain.create()
+
+
+@pytest.fixture(autouse=True)
+def _reset_observability_logging() -> Iterator[None]:
+    """Reset observability logger state before each test."""
+    obs_logging._reset_for_tests()
+    yield
+    obs_logging._reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _reset_notifier_logger() -> Iterator[None]:
+    """Reset notifier logger propagation state after each test."""
+    yield
+    # After obs_logging._reset_for_tests(), ensure both parent and notifier loggers propagate
+    obs_logger = logging.getLogger("kvmchaos.observability")
+    obs_logger.propagate = True
+    notifier_logger = logging.getLogger("kvmchaos.observability.notifier")
+    notifier_logger.propagate = True
