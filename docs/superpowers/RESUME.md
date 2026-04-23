@@ -1,52 +1,61 @@
 # RESUME — kvmchaos Checkpoint
 
 **Saved:** 2026-04-23
-**Status:** v0.14 (net.corrupt) complete and lab-validated.
+**Status:** v0.15.0 — productisation milestone.
 
 ## What's done
 
-### v0.1 (tag v0.1.0)
-- Repo skeleton, `libvirt_conn`, `eventlog`, `safety`
-- `vm.pause`, `vm.kill`
-- CLI: `--version`, `list-vms`, `list-faults`, `inject`
+### v0.1 → v0.12 (legacy — see CHANGELOG)
 
-### v0.2 (tag v0.2.0)
-- `vm.freeze` via scheduler `cpu_shares`
-- `vm.starve` via virtio-balloon
-- `--dry-run`
+Foundational faults, run records, HTML report, production hardening.
 
-### v0.3 (tag v0.3.0)
-- `net.latency` via `tc netem` on host tap
-- Per-run JSON records under `$XDG_STATE_HOME/kvmchaos/runs/`
-- `local_only` attribute + remote-URI guard for tap/cgroup faults
-- `qemu+ssh://` remote libvirt works for non-local-only faults
+### v0.13.0 — `net.bandwidth`
 
-### v0.4–v0.12 (unreleased bundle)
-- `disk.latency` via cgroup v2 `io.max`
-- `disk.fill`, `net.packet-loss`, `net.partition`, `vm.starve`
-- HTML report generator (`kvmchaos report`)
-- Run records: atomic writes, corrupt-record skip, `dry_run` outcome
-- Production hardening: SIGTERM revert, idempotent `del_root_qdisc`, bounds validation
+`tc netem rate`; `tap_device()` extracted to `tc.py`.
 
-### v0.13 (tag v0.13.0)
-- `net.bandwidth` via `tc netem rate` on host tap device
-- `--rate <kbps>` flag on `inject`
-- `tap_device()` extracted to `tc.py` (no duplication across net fault files)
-- Lab-validated: inject/verify/revert all `ok`, outcome `success` (2026-04-23)
+### v0.14.0 — `net.corrupt`
 
-### v0.14 (unreleased)
-- `net.corrupt` via `tc netem corrupt N%` on host tap device
-- `--corrupt <percent>` flag on `inject` (default 1%, min=1, max=100)
-- `add_netem_corrupt()` added to `tc.py`
-- Lab-validated: inject/verify/revert all `ok`, outcome `success` (2026-04-23)
+`tc netem corrupt`; all 12 faults now shipped.
+
+### v0.15.0 (this session)
+
+**Code audit & refactor**
+- `tc.assert_netem_active` consolidates five duplicate `verify()` methods.
+- `_FAULT_BUILDERS` dict replaces `inject_cmd` if/elif chain.
+- Net fault tests now mock at `subprocess.run` (behaviour-level).
+- Three audit bugs fixed (`net_partition`, README gap, packet-loss default).
+
+**Release engineering**
+- `__version__` via `importlib.metadata`.
+- `CHANGELOG.md` with full history.
+- `ty` wired as advisory type checker.
+- `.github/workflows/release.yml` for tag-driven sdist+wheel builds.
+
+**Safety envelope**
+- `~/.config/kvmchaos/config.toml` with `[allowlist]` and `[rate_limit]`.
+- `kvmchaos abort-all` emergency stop.
+- `--force` to bypass safety rails on demand.
+
+**UX**
+- `kvmchaos run <experiment.toml>` — declarative multi-step chaos.
+- `kvmchaos doctor` — env diagnostic.
+- Five recipes in `docs/recipes/`.
+- README troubleshooting table.
 
 ## Repo state
 
 - Git branch: `main`
-- Tests: 330 passing, 98% coverage
+- Tests: 386 passing, 95% coverage
 - Ruff: clean; format clean
+- `ty` advisory: 9 pre-existing libvirt-stub false positives
 
 ## What's next
 
-- Tag `v0.14.0`
-- Backlog: `disk.corrupt` (needs design), `migration.abort` (needs second KVM host)
+- **Phase 4 — Observability:** structured journald logs, Prometheus `/metrics`
+  endpoint, Slack/webhook notifier on inject start/end.
+- **Phase 5 — Distribution:** PyPI package, shell completion, RPM/DEB specs,
+  container image.
+- **Phase 6 — Multi-target / Cloud:** multi-VM concurrent experiments,
+  ssh-based remote executor, cloud provider backends (AWS/GCP). Needs design.
+
+Each is a focused 1-2 hour session (Phase 6 longer).

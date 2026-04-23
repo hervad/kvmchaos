@@ -6,12 +6,48 @@ All notable changes to kvmchaos. Format loosely follows
 
 ## [Unreleased]
 
-- Code audit pass: deduplicated net.* verify() methods via `tc.assert_netem_active`,
-  replaced `inject_cmd` if/elif dispatch with `_FAULT_BUILDERS` dict, removed
-  `report_cmd` fast-path hack, moved net fault test mocks from `tc.add_netem_*`
-  down to `subprocess.run` (behaviour-level tests).
-- `__version__` now resolves via `importlib.metadata`, no longer hard-coded.
-- `ty` added to dev deps (advisory; libvirt-python stubs surface false positives).
+None yet.
+
+## [0.15.0] — 2026-04-23
+
+### Code quality
+
+- Code audit pass: deduplicated net.* `verify()` methods via
+  `tc.assert_netem_active`, replaced `inject_cmd` if/elif dispatch with
+  `_FAULT_BUILDERS` dict, removed `report_cmd` fast-path hack.
+- Moved net fault test mocks from `tc.add_netem_*` down to `subprocess.run`
+  (behaviour-level tests robust against tc.py refactors).
+- Three bugs fixed: `net.partition` duplicated `_tap_device`; README missing
+  `clock.skew`; `NetPacketLossFault` default mismatch (class 50% vs CLI 10%,
+  unified to 10%).
+
+### Release engineering
+
+- `__version__` resolves via `importlib.metadata` (was hard-coded stale).
+- `CHANGELOG.md` added.
+- `ty` wired into dev deps (advisory; `libvirt-python` stubs produce known
+  false positives).
+- `.github/workflows/release.yml` builds sdist + wheel on tag push.
+
+### Safety envelope
+
+- `~/.config/kvmchaos/config.toml` optional config file with:
+  - `[allowlist]` — exact VM names + fnmatch patterns. `--force` overrides.
+  - `[rate_limit]` — `injects_per_hour`, `min_interval_between_destructive_seconds`.
+- `kvmchaos abort-all` — emergency stop that scans running domains and
+  removes any active `netem` qdisc from their tap devices.
+
+### UX
+
+- `kvmchaos run <experiment.toml>` — declarative multi-step chaos runner
+  with per-step `continue_on_failure`.
+- `kvmchaos doctor` — diagnoses `tc` availability, cgroup v2 mount, libvirt
+  group membership, libvirtd reachability, runs dir writability.
+- `docs/recipes/` — five worked examples (DB failover, disk-full alerting,
+  flaky network, VM restart, memory pressure).
+- `docs/examples/config.toml` and `docs/examples/experiment.toml` — annotated
+  schema references.
+- README troubleshooting section.
 
 ## [0.14.0] — 2026-04-23
 
