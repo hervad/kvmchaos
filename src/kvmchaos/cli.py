@@ -23,6 +23,7 @@ import libvirt
 import typer
 
 from kvmchaos import __version__
+from kvmchaos.config import load_config, rate_limit_violation
 from kvmchaos.eventlog import configure_logging, log_event
 from kvmchaos.faults import FAULTS
 from kvmchaos.faults.base import Fault
@@ -198,6 +199,69 @@ def doctor_cmd(ctx: typer.Context) -> None:
     if fail:
         raise typer.Exit(code=2)
     if warn:
+        raise typer.Exit(code=1)
+
+
+@app.command("abort-all")
+def abort_all_cmd(
+    ctx: typer.Context,
+    assume_yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+) -> None:
+    """Revert all active ``net.*`` faults on this host — emergency stop.
+
+    Scans every running domain's first tap device and calls ``tc qdisc del root``
+    on any that have an active netem qdisc. This is the most common stuck state
+    (a failed revert leaves a VM unreachable).
+
+    Does NOT revert disk.latency, vm.pause, vm.freeze, or clock.skew — those
+    require per-fault metadata (the pre-inject value) to revert correctly.
+    Run the original ``kvmchaos inject`` again with ``--duration 0`` to force
+    a revert for those.
+
+    Exits 0 if the scan completes (even with nothing to clean up), 1 if the
+    user aborts.
+    """
+    import kvmchaos.tc as tc
+
+    raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
+    resolved_uri = resolve_uri(raw_uri)
+
+    cleared: list[tuple[str, str]] = []  # (vm_name, dev)
+    with connect(resolved_uri) as conn:
+        for domain in conn.listAllDomains():
+            state, _ = domain.state()
+            if state != libvirt.VIR_DOMAIN_RUNNING:
+                continue
+            try:
+                dev = tc.tap_device(domain)
+            except RuntimeError:
+                continue  # no interface; nothing to revert
+            if "netem" in tc.show_qdisc(dev):
+                cleared.append((domain.name(), dev))
+
+    if not cleared:
+        typer.echo("No active net.* faults found.")
+        return
+
+    typer.echo("Active net.* faults to revert:")
+    for name, dev in cleared:
+        typer.echo(f"  {name} ({dev})")
+    if not assume_yes:
+        prompt = f"Revert {len(cleared)} active fault(s)? Continue?"
+        if not confirm(prompt, assume_yes=False):
+            typer.echo("Aborted.")
+            raise typer.Exit(code=1)
+
+    errors = 0
+    for name, dev in cleared:
+        try:
+            tc.del_root_qdisc(dev)
+            typer.echo(f"reverted: {name} ({dev})")
+        except RuntimeError as exc:
+            typer.echo(f"ERROR reverting {name} ({dev}): {exc}", err=True)
+            errors += 1
+
+    if errors:
         raise typer.Exit(code=1)
 
 
@@ -512,6 +576,16 @@ def inject_cmd(
         min=-31_536_000,
         max=31_536_000,
     ),
+    config_path: Path | None = typer.Option(
+        None,
+        "--config",
+        help="Path to config.toml (default: $XDG_CONFIG_HOME/kvmchaos/config.toml).",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Bypass allowlist and rate-limit checks. Use with care.",
+    ),
 ) -> None:
     """Inject a fault into a VM, verify it took effect, then revert.
 
@@ -530,6 +604,8 @@ def inject_cmd(
         rate: Bandwidth cap in kbps, used only by net.bandwidth.
         corrupt: Packet corruption percentage, used only by net.corrupt.
         skew: Clock offset in seconds, used only by clock.skew.
+        config_path: Optional override for the config file location.
+        force: If True, bypass allowlist and rate-limit checks.
     """
     configure_logging()
 
@@ -545,6 +621,27 @@ def inject_cmd(
     fault = _build_fault(
         fault_name, bandwidth=bandwidth, size=size, loss=loss, rate=rate, corrupt=corrupt, skew=skew
     )
+
+    if not force:
+        try:
+            cfg = load_config(config_path)
+        except FileNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        if not cfg.allowlist.is_allowed(vm):
+            typer.echo(
+                f"VM {vm!r} is not in the allowlist. Add it to the config file or pass --force.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if cfg.rate_limit.is_configured():
+            records = load_records(default_runs_dir())
+            violation = rate_limit_violation(
+                cfg.rate_limit, records, is_destructive=fault.destructive
+            )
+            if violation is not None:
+                typer.echo(f"{violation}. Wait and retry, or pass --force.", err=True)
+                raise typer.Exit(code=2)
 
     raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
     resolved_uri = resolve_uri(raw_uri)

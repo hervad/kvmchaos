@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -607,3 +608,178 @@ class TestNetPartitionCli:
         result = runner.invoke(app, ["list-faults"])
         assert result.exit_code == 0
         assert "net.partition" in result.stdout
+
+
+class TestAllowlist:
+    def test_inject_blocked_when_vm_not_in_allowlist(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        cfg = tmp_path / "config.toml"
+        cfg.write_text('[allowlist]\nvms = ["other"]\n')
+
+        result = runner.invoke(
+            app,
+            [
+                "inject",
+                "--yes",
+                "--dry-run",
+                "--config",
+                str(cfg),
+                "vm.pause",
+                "server1",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "not in the allowlist" in result.output
+
+    def test_inject_allowed_with_matching_pattern(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        cfg = tmp_path / "config.toml"
+        cfg.write_text('[allowlist]\npatterns = ["server-*"]\n')
+        result = runner.invoke(
+            app,
+            [
+                "--connect",
+                "test:///default",
+                "inject",
+                "--yes",
+                "--dry-run",
+                "--config",
+                str(cfg),
+                "vm.pause",
+                "test",
+            ],
+        )
+        # 'test' doesn't match 'server-*' — should be blocked
+        assert result.exit_code == 2
+        assert "not in the allowlist" in result.output
+
+    def test_force_bypasses_allowlist(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        cfg = tmp_path / "config.toml"
+        cfg.write_text('[allowlist]\nvms = ["other"]\n')
+        result = runner.invoke(
+            app,
+            [
+                "--connect",
+                "test:///default",
+                "inject",
+                "--yes",
+                "--dry-run",
+                "--force",
+                "--config",
+                str(cfg),
+                "vm.pause",
+                "test",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_invalid_config_path_exits_2(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        result = runner.invoke(
+            app,
+            [
+                "inject",
+                "--yes",
+                "--dry-run",
+                "--config",
+                str(tmp_path / "does-not-exist.toml"),
+                "vm.pause",
+                "test",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "config file not found" in result.output
+
+
+class TestRateLimit:
+    def test_hourly_limit_blocks_inject(self, tmp_path, monkeypatch) -> None:
+        from datetime import UTC, datetime
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        runs = tmp_path / "kvmchaos" / "runs"
+        runs.mkdir(parents=True)
+        now = datetime.now(UTC).isoformat()
+        for i in range(3):
+            (runs / f"rec{i}.json").write_text(
+                f'{{"started_at": "{now}", "fault": "vm.pause", "vm": "x"}}'
+            )
+
+        cfg = tmp_path / "config.toml"
+        cfg.write_text("[rate_limit]\ninjects_per_hour = 3\n")
+
+        result = runner.invoke(
+            app,
+            [
+                "--connect",
+                "test:///default",
+                "inject",
+                "--yes",
+                "--dry-run",
+                "--config",
+                str(cfg),
+                "vm.pause",
+                "test",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "rate limit" in result.output
+
+
+class TestAbortAll:
+    def test_reports_nothing_when_no_active_faults(self) -> None:
+        with patch("kvmchaos.cli.connect") as mock_conn:
+            mock_conn.return_value.__enter__.return_value.listAllDomains.return_value = []
+            result = runner.invoke(app, ["abort-all"])
+        assert result.exit_code == 0
+        assert "No active net.* faults" in result.output
+
+    def test_reverts_active_netem_qdisc(self) -> None:
+        import libvirt as _libvirt
+
+        domain = MagicMock()
+        domain.name.return_value = "server1"
+        domain.state.return_value = (_libvirt.VIR_DOMAIN_RUNNING, 1)
+
+        with (
+            patch("kvmchaos.cli.connect") as mock_conn,
+            patch("kvmchaos.tc.tap_device", return_value="vnet0"),
+            patch("kvmchaos.tc.show_qdisc", return_value="qdisc netem 8001: root loss 10%"),
+            patch("kvmchaos.tc.del_root_qdisc") as mock_del,
+        ):
+            mock_conn.return_value.__enter__.return_value.listAllDomains.return_value = [domain]
+            result = runner.invoke(app, ["abort-all", "--yes"])
+        assert result.exit_code == 0
+        assert "reverted: server1" in result.output
+        mock_del.assert_called_once_with("vnet0")
+
+    def test_skips_non_running_domains(self) -> None:
+        import libvirt as _libvirt
+
+        domain = MagicMock()
+        domain.name.return_value = "shutoff-vm"
+        domain.state.return_value = (_libvirt.VIR_DOMAIN_SHUTOFF, 1)
+
+        with patch("kvmchaos.cli.connect") as mock_conn:
+            mock_conn.return_value.__enter__.return_value.listAllDomains.return_value = [domain]
+            result = runner.invoke(app, ["abort-all"])
+        assert result.exit_code == 0
+        assert "No active" in result.output
+
+    def test_user_aborts_without_yes(self) -> None:
+        import libvirt as _libvirt
+
+        domain = MagicMock()
+        domain.name.return_value = "server1"
+        domain.state.return_value = (_libvirt.VIR_DOMAIN_RUNNING, 1)
+
+        with (
+            patch("kvmchaos.cli.connect") as mock_conn,
+            patch("kvmchaos.tc.tap_device", return_value="vnet0"),
+            patch("kvmchaos.tc.show_qdisc", return_value="qdisc netem 8001: root"),
+            patch("kvmchaos.cli.confirm", return_value=False),
+        ):
+            mock_conn.return_value.__enter__.return_value.listAllDomains.return_value = [domain]
+            result = runner.invoke(app, ["abort-all"])
+        assert result.exit_code == 1
+        assert "Aborted" in result.output

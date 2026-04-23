@@ -1,0 +1,35 @@
+# kvmchaos config file
+#
+# Location lookup order:
+#   1. --config PATH (CLI flag)
+#   2. $XDG_CONFIG_HOME/kvmchaos/config.toml
+#   3. ~/.config/kvmchaos/config.toml
+#   4. /etc/kvmchaos/config.toml
+#
+# A missing or absent config file is fine — kvmchaos runs with no
+# safety rails until you add them here.
+
+# ---------------------------------------------------------------------------
+# Allowlist — which VMs can be targeted by `kvmchaos inject`.
+#
+# Without an allowlist, any VM is fair game. With one, only VMs that match
+# an exact name or a pattern are allowed. Use --force to override.
+# ---------------------------------------------------------------------------
+
+[allowlist]
+vms = ["server1", "server2"]
+patterns = ["staging-*", "qa-*"]
+
+# ---------------------------------------------------------------------------
+# Rate limit — prevent runaway injections.
+#
+# injects_per_hour: 0 means unlimited. Counted across all run records
+#   in $XDG_STATE_HOME/kvmchaos/runs (from all users on the host).
+#
+# min_interval_between_destructive_seconds: 0 means no gate. Currently
+#   applies only to vm.kill. Prevents double-tap destroy scenarios.
+# ---------------------------------------------------------------------------
+
+[rate_limit]
+injects_per_hour = 20
+min_interval_between_destructive_seconds = 300

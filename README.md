@@ -82,6 +82,47 @@ to `~/.local/state/kvmchaos/runs/` as JSON regardless of outcome.
 | `--size N` | 1024 | Fill size in MiB (`disk.fill`) |
 | `--skew N` | 3600 | Clock offset in seconds (`clock.skew`) |
 
+## Safety
+
+### Allowlist
+
+To prevent typo'd VM names from hitting production, put a config file at
+`~/.config/kvmchaos/config.toml`:
+
+```toml
+[allowlist]
+vms = ["server1", "server2"]
+patterns = ["staging-*"]
+```
+
+Inject attempts against non-matching VMs exit 2. Override with `--force`.
+
+### Rate limiting
+
+```toml
+[rate_limit]
+injects_per_hour = 20
+min_interval_between_destructive_seconds = 300
+```
+
+See [docs/examples/config.toml](docs/examples/config.toml) for the full template.
+
+### Emergency stop
+
+If an inject fails mid-run and leaves a VM unreachable (e.g. `net.partition`
+revert didn't fire), `kvmchaos abort-all` scans every running domain and
+removes any active `netem` qdisc from its tap device.
+
+```bash
+sudo kvmchaos abort-all --yes
+```
+
+### `kvmchaos doctor`
+
+First-run diagnostic — checks `tc` binary, cgroup v2 mount, libvirt group
+membership, libvirtd reachability, and runs-dir write access. Exit code
+0 on pass, 1 warn, 2 fail.
+
 ## Run Records
 
 Every inject writes a JSON record:
