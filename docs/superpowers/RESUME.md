@@ -129,9 +129,8 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## Repo state
 
-- `main` HEAD: `323a2e8` (merge commit — Merge v0.17.0).
-- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`).
-- `feat/v0.17-clean-streams` fully merged; worktree can be cleaned up.
+- `main` HEAD: `d46db54` (fast-forward merge — v0.18.0 distribution).
+- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`d46db54`).
 - Tests: 424 passing, 95% coverage, ruff clean, format clean.
 
 ## Known follow-ups
@@ -140,10 +139,11 @@ Resolves the v0.16 stderr mixed-stream follow-up.
   — the `--json-log` flag and libvirt error handler were implemented. The follow-up
   doc has been marked resolved.
 
-## What's next (after v0.16.0 lab validation + merge)
+## What's next
 
-- **Phase 5 — Distribution:** PyPI package, shell completion, RPM/DEB specs,
-  container image.
+- **v0.18 lab validation:** Tag a release and verify the CI `build-rpm` job
+  produces a working RPM on AlmaLinux 9. Install on RHEL 9 KVM host and run
+  `kvmchaos --version` + `kvmchaos list-faults`.
 - **Phase 6 — Multi-target / Cloud:** multi-VM concurrent experiments,
   ssh-based remote executor, cloud provider backends (AWS/GCP). Needs design.
 
