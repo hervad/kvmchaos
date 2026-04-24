@@ -1,10 +1,8 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-24 (evening — v0.17 implementation complete, awaiting lab validation)
-**Status:** v0.16.0 merged + tagged. **v0.17.0 implementation is complete** on
-branch `feat/v0.17-clean-streams` (13 commits ahead of `main`). All 11 tasks done,
-all reviews passed, final cross-branch review approved. 424 tests passing, 95%
-coverage, ruff clean. Pending: user lab validation before merge + tag `v0.17.0`.
+**Saved:** 2026-04-24 (evening — v0.17.0 merged + tagged)
+**Status:** v0.17.0 merged to `main` and tagged. Lab validation passed on Fedora 43
+/ `qemu:///system`. 424 tests, 95% coverage, ruff clean. No open work items.
 
 ## What's done
 
@@ -94,7 +92,7 @@ Artefacts:
 
 ---
 
-### v0.17.0 — Clean Observability Streams (AWAITING LAB VALIDATION)
+### v0.17.0 — Clean Observability Streams
 
 Resolves the v0.16 stderr mixed-stream follow-up.
 
@@ -120,40 +118,21 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 | 11 | final pytest/ruff/coverage + handoff | ✅ | — | — |
 | Final | cross-branch code review | ✅ APPROVED | — | — |
 
-**Next step — lab validation (user action required):**
+**Lab validation 2026-04-24 passed** on Fedora 43 / `qemu:///system`, VM `server1`
+(domain not running — exercised the inject.error path):
 
-Smoke-test the branch on Fedora 43 / `qemu:///system` with VM `server1`
-(analogous to v0.16 lab validation):
-
-```bash
-# From the worktree:
-cd /home/kai/kvmchaos/.worktrees/v0.17-clean-streams
-
-# Test 1 — --json-log writes pure JSONL
-kvmchaos --connect qemu:///system --json-log /tmp/kc-events.jsonl inject vm.pause server1 --duration 3 --yes
-cat /tmp/kc-events.jsonl | jq .   # should parse cleanly, no libvirt C-lib noise
-
-# Test 2 -- --verbose routes libvirt errors to the file sink
-kvmchaos --connect qemu:///system --verbose --json-log /tmp/kc-verbose.jsonl inject vm.pause server1 --duration 3 --yes
-grep '"event":"libvirt.stderr"' /tmp/kc-verbose.jsonl   # optional; only fires if libvirt emits errors
-```
-
-After validation passes, record the result below and then merge + tag:
-
-```bash
-cd /home/kai/kvmchaos
-git merge --no-ff feat/v0.17-clean-streams -m "Merge v0.17.0 — clean observability streams"
-git tag v0.17.0
-```
+- Run 1 (`--json-log` only): exit non-zero (domain not running). JSONL file parsed
+  cleanly with `jq .` — four structured records, no raw libvirt C-lib text.
+- Run 2 (`--verbose --json-log`): same outcome plus one `libvirt.stderr` DEBUG event
+  in the JSONL file (`event`, `code`, `domain`, `libvirt_level` all present). Pure
+  JSONL throughout — original mixed-stream bug is resolved.
 
 ## Repo state
 
-- `main` last commit: `b0d9b63` (RESUME update — v0.17 mid-implementation).
-- `main` has tag `v0.16.0` (merge commit `fbd2971`).
-- Active branch: `feat/v0.17-clean-streams` (13 commits ahead of `main`).
-- Worktree HEAD: `55917d1` (Task 10 — docs).
+- `main` HEAD: `323a2e8` (merge commit — Merge v0.17.0).
+- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`).
+- `feat/v0.17-clean-streams` fully merged; worktree can be cleaned up.
 - Tests: 424 passing, 95% coverage, ruff clean, format clean.
-- No uncommitted changes in the worktree.
 
 ## Known follow-ups
 
