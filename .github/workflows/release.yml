@@ -40,3 +40,33 @@ jobs:
           body: |
             See [CHANGELOG.md](CHANGELOG.md) for release notes.
           generate_release_notes: true
+
+  build-rpm:
+    needs: github-release
+    runs-on: ubuntu-latest
+    container: almalinux:9
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          dnf install -y python3.11 python3.11-pip rpm-build libvirt-devel pkg-config
+          pip3.11 install uv
+
+      - name: Install project dependencies
+        run: uv sync --python python3.11
+
+      - name: Build RPM
+        run: |
+          bash packaging/build.sh
+          mkdir -p "$GITHUB_WORKSPACE/dist-rpm"
+          cp ~/rpmbuild/RPMS/x86_64/kvmchaos-*.rpm "$GITHUB_WORKSPACE/dist-rpm/"
+
+      - name: Upload RPM to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-rpm/kvmchaos-*.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
