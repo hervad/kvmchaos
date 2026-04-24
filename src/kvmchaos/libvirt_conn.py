@@ -8,11 +8,40 @@ agree on which hypervisor they are talking to.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 
 import libvirt
+
+_LIBVIRT_LOG = logging.getLogger("kvmchaos.observability.libvirt")
+
+
+def _libvirt_error_handler(_ctx: object, err: tuple) -> None:
+    """Forward libvirt C-library errors to the observability logger.
+
+    libvirt calls this for every error normally written to stderr via
+    its C-level logging. Routing the message to our ``kvmchaos.observability
+    .libvirt`` child logger at DEBUG keeps the information available
+    under ``--verbose`` while silencing it in the default INFO mode.
+
+    Args:
+        _ctx: Opaque context pointer — unused; required by libvirt's signature.
+        err: Tuple as documented in libvirt's ``virErrorSetCallback``.
+            The first four fields are ``(code, domain, message, level)``.
+    """
+    code, domain, message, level, *_ = err
+    _LIBVIRT_LOG.debug(
+        message,
+        extra={
+            "event": "libvirt.stderr",
+            "code": code,
+            "domain": domain,
+            "libvirt_level": level,
+        },
+    )
+
 
 DEFAULT_URI = "qemu:///system"
 
