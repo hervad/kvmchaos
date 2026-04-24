@@ -482,7 +482,7 @@ def _record_id(runs_dir: Path, record: dict[str, object]) -> str:
     try:
         dt = datetime.fromisoformat(str(raw_ts)).astimezone(UTC)
         compact = dt.strftime("%Y%m%dT%H%M%SZ")
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         compact = str(raw_ts)
     fault_slug = str(record.get("fault", "")).replace(".", "-")
     return f"{compact}-{fault_slug}-{record.get('vm', '')}"

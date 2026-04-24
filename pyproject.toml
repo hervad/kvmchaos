@@ -1,9 +1,9 @@
 [project]
 name = "kvmchaos"
-version = "0.17.0"
+version = "0.18.0"
 description = "Agent-less chaos engineering CLI for KVM/libvirt VMs."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Vadym Herman" }]
 keywords = ["kvm", "libvirt", "chaos-engineering", "testing"]
@@ -11,7 +11,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Operating System :: POSIX :: Linux",
-    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.11",
     "Topic :: System :: Emulators",
 ]
 dependencies = [
@@ -24,6 +24,7 @@ kvmchaos = "kvmchaos.cli:app"
 
 [dependency-groups]
 dev = [
+    "pyinstaller>=6",
     "pytest>=8",
     "pytest-cov>=5",
     "ruff>=0.6",
@@ -39,7 +40,7 @@ packages = ["src/kvmchaos"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]

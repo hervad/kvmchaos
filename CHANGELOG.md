@@ -6,6 +6,18 @@ All notable changes to kvmchaos. Format loosely follows
 
 ## [Unreleased]
 
+## [0.18.0] — TBD
+
+### Added
+- Self-contained binary RPM for air-gapped RHEL 9 deployment
+  (`packaging/build.sh`, `packaging/kvmchaos.spec`).
+- Bash completion installed via RPM to `/etc/bash_completion.d/kvmchaos`.
+- `build-rpm` GitHub Actions job builds and uploads the RPM on tag push.
+
+### Changed
+- `requires-python` lowered from `>=3.14` to `>=3.11` (the actual runtime
+  minimum — `tomllib` requires 3.11; no 3.14-specific syntax is used).
+
 ## [0.17.0] — 2026-04-24
 
 ### Added

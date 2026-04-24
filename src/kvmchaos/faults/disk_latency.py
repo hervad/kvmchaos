@@ -84,7 +84,7 @@ class DiskLatencyFault:
         try:
             major, minor = _disk_dev(domain)
             io_max = _io_max_path(domain.name())
-        except FileNotFoundError, RuntimeError:
+        except (FileNotFoundError, RuntimeError):
             # QEMU exited; cgroup is already cleaned up — throttle is gone.
             return
         io_max.write_text(f"{major}:{minor} rbps=max wbps=max\n")
@@ -269,5 +269,5 @@ def _whole_disk(major: int, minor: int) -> tuple[int, int]:
         text = parent_dev.read_text().strip()
         pmaj_s, pmin_s = text.split(":", 1)
         return int(pmaj_s), int(pmin_s)
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return major, minor
