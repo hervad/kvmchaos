@@ -1,10 +1,10 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-24 (afternoon — v0.17 mid-implementation handoff)
-**Status:** v0.16.0 merged + tagged last session. **v0.17.0 is in progress** on
-branch `feat/v0.17-clean-streams` (worktree at `.worktrees/v0.17-clean-streams`);
-7 of 11 plan tasks fully complete, task 7 awaiting two-stage review, tasks 8–11
-untouched. 422 tests passing, ruff clean, working tree clean. No git remote.
+**Saved:** 2026-04-24 (evening — v0.17 implementation complete, awaiting lab validation)
+**Status:** v0.16.0 merged + tagged. **v0.17.0 implementation is complete** on
+branch `feat/v0.17-clean-streams` (13 commits ahead of `main`). All 11 tasks done,
+all reviews passed, final cross-branch review approved. 424 tests passing, 95%
+coverage, ruff clean. Pending: user lab validation before merge + tag `v0.17.0`.
 
 ## What's done
 
@@ -94,18 +94,16 @@ Artefacts:
 
 ---
 
-### v0.17.0 — Clean Observability Streams (IN PROGRESS)
+### v0.17.0 — Clean Observability Streams (AWAITING LAB VALIDATION)
 
 Resolves the v0.16 stderr mixed-stream follow-up.
 
 - **Spec:** `docs/superpowers/specs/2026-04-24-kvmchaos-v0.17-clean-streams-design.md`
 - **Plan:** `docs/superpowers/plans/2026-04-24-kvmchaos-v0.17-clean-streams.md` (11 tasks)
-- **Branch:** `feat/v0.17-clean-streams`
+- **Branch:** `feat/v0.17-clean-streams` — **13 commits, HEAD `55917d1`**
 - **Worktree:** `/home/kai/kvmchaos/.worktrees/v0.17-clean-streams`
-- **Driver skill:** `superpowers:subagent-driven-development`
-  (fresh subagent per task + two-stage review: spec-compliance then code-quality)
 
-**Task status:**
+**Task status — all complete:**
 
 | # | Task | Impl | Spec review | Code review |
 |---|---|---|---|---|
@@ -113,68 +111,55 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 | 2 | `json_log_path` on `configure_stderr_logging` | ✅ `21b93b6` | ✅ | ✅ |
 | 3 | `_reset_for_tests` closes file handlers | ✅ `7a10da4` | ✅ | ✅ |
 | 4 | `--json-log` CLI wiring | ✅ `b64bad2` | ✅ | ✅ |
-| 5 | `--json-log` fails fast on unwritable path | ✅ `4f50704`+`917e2a8` | ✅ | ✅ (test-stderr bug fixed) |
+| 5 | `--json-log` fails fast on unwritable path | ✅ `4f50704`+`917e2a8` | ✅ | ✅ |
 | 6 | libvirt error handler | ✅ `a90b8bd` | ✅ | ✅ |
-| 7 | idempotent `_register_once` | ✅ `9325dc5` | ⏳ **next** | ⏳ **next** |
-| 8 | wire `_register_once` into `connect()` + conftest | — | — | — |
-| 9 | end-to-end `--verbose --json-log` capture test | — | — | — |
-| 10 | follow-up resolved header + CHANGELOG date + README | — | — | — |
-| 11 | final pytest/ruff/coverage + handoff | — | — | — |
-| Final | cross-branch code review | — | — | — |
+| 7 | idempotent `_register_once` | ✅ `9325dc5` | ✅ | ✅ |
+| 8 | wire `_register_once` into `connect()` + conftest | ✅ `c925e0d`+`545675d` | ✅ | ✅ |
+| 9 | end-to-end `--verbose --json-log` capture test | ✅ `f590568` | ✅ | ✅ |
+| 10 | follow-up resolved header + CHANGELOG date + README | ✅ `55917d1` | ✅ | ✅ |
+| 11 | final pytest/ruff/coverage + handoff | ✅ | — | — |
+| Final | cross-branch code review | ✅ APPROVED | — | — |
 
-**Resume here next session (in order):**
+**Next step — lab validation (user action required):**
 
-1. Re-invoke `superpowers:subagent-driven-development`, pointing at the
-   plan file. Controller agent is on `main`; subagents work inside the
-   `.worktrees/v0.17-clean-streams` worktree.
-2. Start with **Task 7 spec review** (target commit `9325dc5` in the
-   worktree — check plan Task 7 requirements against the actual diff).
-3. Then **Task 7 code-quality review**.
-4. Then Tasks 8 → 11 in order, each with implementer → spec reviewer →
-   code-quality reviewer cycle. Plan contains complete code blocks and
-   expected pre-implementation failure messages for each task.
-5. Final: dispatch cross-branch code reviewer; then hand off to user for
-   manual **lab validation** (analogous to v0.16's Fedora 43 /
-   `qemu:///system` / `server1` test — smoke-test `--json-log PATH` and
-   `--verbose` libvirt error capture) before merge + tag `v0.17.0`.
+Smoke-test the branch on Fedora 43 / `qemu:///system` with VM `server1`
+(analogous to v0.16 lab validation):
 
-**Deviations already accepted (do not re-flag):**
+```bash
+# From the worktree:
+cd /home/kai/kvmchaos/.worktrees/v0.17-clean-streams
 
-- Test file imports `Path` from `pathlib` without `# noqa: F401` (ruff
-  removed it; `from __future__ import annotations` lets bare `Path`
-  forward-references work).
-- `test_reset_closes_file_handler` asserts `handler.stream is None` after
-  `_reset_for_tests` (not `.closed`) — CPython's `FileHandler.close()`
-  nulls the stream before closing.
-- `tests/test_libvirt_error_handler.py` omits a `logging` import the plan
-  listed — tests don't reference the module directly.
-- Task 5's test checks `result.stderr` (not `result.output`) — Click 8.3+
-  exposes stderr on `result.stderr` by default; `result.output` is stdout
-  only.
+# Test 1 — --json-log writes pure JSONL
+kvmchaos --connect qemu:///system --json-log /tmp/kc-events.jsonl inject vm.pause server1 --duration 3 --yes
+cat /tmp/kc-events.jsonl | jq .   # should parse cleanly, no libvirt C-lib noise
 
-**Not scope-reduced / still TODO per plan:**
+# Test 2 -- --verbose routes libvirt errors to the file sink
+kvmchaos --connect qemu:///system --verbose --json-log /tmp/kc-verbose.jsonl inject vm.pause server1 --duration 3 --yes
+grep '"event":"libvirt.stderr"' /tmp/kc-verbose.jsonl   # optional; only fires if libvirt emits errors
+```
 
-- Task 8 adds an autouse `_reset_libvirt_registration` fixture to
-  `tests/conftest.py` — this prevents cross-test pollution of the
-  module-level `_HANDLER_REGISTERED` flag once Task 8 wires registration
-  into `connect()`.
+After validation passes, record the result below and then merge + tag:
+
+```bash
+cd /home/kai/kvmchaos
+git merge --no-ff feat/v0.17-clean-streams -m "Merge v0.17.0 — clean observability streams"
+git tag v0.17.0
+```
 
 ## Repo state
 
-- `main` last commit: `37c1801` (spec fix — `libvirt_level` key rename).
+- `main` last commit: `b0d9b63` (RESUME update — v0.17 mid-implementation).
 - `main` has tag `v0.16.0` (merge commit `fbd2971`).
-- Active branch: `feat/v0.17-clean-streams` (9 commits ahead of `main`).
-- Worktree HEAD: `9325dc5` (Task 7 implementation).
-- Tests: 422 passing, ruff clean, format clean.
+- Active branch: `feat/v0.17-clean-streams` (13 commits ahead of `main`).
+- Worktree HEAD: `55917d1` (Task 10 — docs).
+- Tests: 424 passing, 95% coverage, ruff clean, format clean.
 - No uncommitted changes in the worktree.
 
 ## Known follow-ups
 
-- `docs/superpowers/followups/2026-04-24-observability-stderr-mixed-stream.md`
-  — v0.16 stderr interleaves JSON events with libvirt C-lib error lines and
-  Typer status messages, so naive `jq .` consumers break. Not blocking;
-  webhook sink unaffected. Recommend `--json-log PATH` flag + libvirt error
-  handler suppression for a future release.
+- **Resolved in v0.17.0:** `docs/superpowers/followups/2026-04-24-observability-stderr-mixed-stream.md`
+  — the `--json-log` flag and libvirt error handler were implemented. The follow-up
+  doc has been marked resolved.
 
 ## What's next (after v0.16.0 lab validation + merge)
 
