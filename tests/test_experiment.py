@@ -81,7 +81,32 @@ class TestLoadExperiment:
     def test_step_missing_vm_raises(self, tmp_path: Path):
         path = tmp_path / "e.toml"
         path.write_text('name = "x"\n\n[[step]]\nfault = "vm.pause"\n')
-        with pytest.raises(ValueError, match="missing 'vm'"):
+        with pytest.raises(ValueError, match="missing 'vm' or 'vms'"):
+            load_experiment(path)
+
+    def test_vms_list_in_toml(self, tmp_path: Path) -> None:
+        path = tmp_path / "e.toml"
+        path.write_text('name = "t"\n\n[[step]]\nfault = "vm.pause"\nvms = ["db1", "db2"]\n')
+        exp = load_experiment(path)
+        assert exp.steps[0].vms == ("db1", "db2")
+        assert exp.steps[0].vm == ""
+
+    def test_parallel_flag_in_toml(self, tmp_path: Path) -> None:
+        path = tmp_path / "e.toml"
+        path.write_text('name = "t"\n\n[[step]]\nfault = "vm.pause"\nvm = "s1"\nparallel = true\n')
+        exp = load_experiment(path)
+        assert exp.steps[0].parallel is True
+
+    def test_step_both_vm_and_vms_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "e.toml"
+        path.write_text('name = "t"\n\n[[step]]\nfault = "vm.pause"\nvm = "s1"\nvms = ["s2"]\n')
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            load_experiment(path)
+
+    def test_step_missing_vm_or_vms_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "e.toml"
+        path.write_text('name = "x"\n\n[[step]]\nfault = "vm.pause"\n')
+        with pytest.raises(ValueError, match="missing 'vm' or 'vms'"):
             load_experiment(path)
 
 
