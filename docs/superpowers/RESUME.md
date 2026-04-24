@@ -1,8 +1,9 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-24 (evening — v0.17.0 merged + tagged)
-**Status:** v0.17.0 merged to `main` and tagged. Lab validation passed on Fedora 43
-/ `qemu:///system`. 424 tests, 95% coverage, ruff clean. No open work items.
+**Saved:** 2026-04-25 (early morning — v0.18.0 CI green, RPM built on GitHub Actions)
+**Status:** v0.18.0 merged to `main` and tagged. GitHub Actions `build-rpm` job passes
+(Release #6). RPM artifact at `hermanvadym/kvmchaos` releases page. Lab validation
+on RHEL 9 KVM host is the remaining step.
 
 ## What's done
 
@@ -129,8 +130,9 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## Repo state
 
-- `main` HEAD: `d46db54` (fast-forward merge — v0.18.0 distribution).
-- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`d46db54`).
+- `main` HEAD: `b0f98e8` (packaging: drop bash completion from RPM).
+- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`).
+- GitHub remote: `https://github.com/hermanvadym/kvmchaos` (private).
 - Tests: 424 passing, 95% coverage, ruff clean, format clean.
 
 ## Known follow-ups
@@ -141,9 +143,11 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## What's next
 
-- **v0.18 lab validation:** Tag a release and verify the CI `build-rpm` job
-  produces a working RPM on AlmaLinux 9. Install on RHEL 9 KVM host and run
-  `kvmchaos --version` + `kvmchaos list-faults`.
+- **v0.18 lab validation:** CI `build-rpm` job is green. Download
+  `kvmchaos-0.18.0-1.el9.x86_64.rpm` from the GitHub Release and install on
+  the RHEL 9 KVM host: `rpm -i kvmchaos-0.18.0-1.el9.x86_64.rpm`, then verify
+  `kvmchaos --version` (expect `0.18.0`) and `kvmchaos list-faults`.
+  Note: bash completion was dropped (CLI has `add_completion=False`).
 - **Phase 6 — Multi-target / Cloud:** multi-VM concurrent experiments,
   ssh-based remote executor, cloud provider backends (AWS/GCP). Needs design.
 
