@@ -71,19 +71,28 @@ def test_connect_triggers_registration(monkeypatch: pytest.MonkeyPatch) -> None:
     """connect() calls _register_once before libvirt.open."""
     from kvmchaos import libvirt_conn
 
-    libvirt_conn._reset_registration_for_tests()
     calls: list[str] = []
 
     real_register = libvirt_conn._register_once
+    real_open = libvirt_conn.libvirt.open
 
     def tracking_register() -> None:
         calls.append("register")
         real_register()
 
+    def tracking_open(uri: str) -> object:
+        calls.append("open")
+        return real_open(uri)
+
     monkeypatch.setattr(libvirt_conn, "_register_once", tracking_register)
+    monkeypatch.setattr(libvirt_conn.libvirt, "open", tracking_open)
 
     with libvirt_conn.connect("test:///default"):
         pass
 
     assert "register" in calls
+    assert "open" in calls
+    assert calls.index("register") < calls.index("open"), (
+        f"_register_once must be called before libvirt.open; got order: {calls}"
+    )
     assert libvirt_conn._HANDLER_REGISTERED is True
