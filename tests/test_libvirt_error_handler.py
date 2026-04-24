@@ -46,3 +46,22 @@ def test_handler_suppressed_in_non_verbose_mode(
     libvirt_conn._libvirt_error_handler(None, _fake_err())
     captured = capsys.readouterr()
     assert captured.err.strip() == ""
+
+
+def test_register_once_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Calling _register_once twice registers the handler exactly once."""
+    from kvmchaos import libvirt_conn
+
+    libvirt_conn._reset_registration_for_tests()
+    calls = []
+    monkeypatch.setattr(
+        libvirt_conn.libvirt,
+        "registerErrorHandler",
+        lambda handler, ctx: calls.append((handler, ctx)),
+    )
+    libvirt_conn._register_once()
+    libvirt_conn._register_once()
+    libvirt_conn._register_once()
+    assert len(calls) == 1
+    assert calls[0][0] is libvirt_conn._libvirt_error_handler
+    assert calls[0][1] is None

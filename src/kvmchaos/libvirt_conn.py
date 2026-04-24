@@ -46,6 +46,27 @@ def _libvirt_error_handler(_ctx: object, err: tuple) -> None:
 DEFAULT_URI = "qemu:///system"
 
 
+_HANDLER_REGISTERED = False
+
+
+def _register_once() -> None:
+    """Register the libvirt error handler at most once per process.
+
+    Safe to call from every ``connect()`` — subsequent calls are no-ops.
+    """
+    global _HANDLER_REGISTERED
+    if _HANDLER_REGISTERED:
+        return
+    libvirt.registerErrorHandler(_libvirt_error_handler, None)
+    _HANDLER_REGISTERED = True
+
+
+def _reset_registration_for_tests() -> None:
+    """Test-only helper: clear the registration flag so tests can re-register."""
+    global _HANDLER_REGISTERED
+    _HANDLER_REGISTERED = False
+
+
 def resolve_uri(cli_flag: str | None) -> str:
     """Resolve the libvirt URI using CLI > env > default precedence.
 
