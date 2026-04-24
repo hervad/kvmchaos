@@ -1,9 +1,8 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-25 (early morning — v0.18.0 CI green, RPM built on GitHub Actions)
-**Status:** v0.18.0 merged to `main` and tagged. GitHub Actions `build-rpm` job passes
-(Release #6). RPM artifact at `hermanvadym/kvmchaos` releases page. Lab validation
-on RHEL 9 KVM host is the remaining step.
+**Saved:** 2026-04-25 (morning — v0.18.0 lab validated on RHEL 9)
+**Status:** v0.18.0 complete. RPM installs on RHEL 9 with no Python dependency.
+424 tests, 95% coverage, ruff clean. No open work items.
 
 ## What's done
 
@@ -143,11 +142,10 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## What's next
 
-- **v0.18 lab validation:** CI `build-rpm` job is green. Download
-  `kvmchaos-0.18.0-1.el9.x86_64.rpm` from the GitHub Release and install on
-  the RHEL 9 KVM host: `rpm -i kvmchaos-0.18.0-1.el9.x86_64.rpm`, then verify
-  `kvmchaos --version` (expect `0.18.0`) and `kvmchaos list-faults`.
-  Note: bash completion was dropped (CLI has `add_completion=False`).
+- **v0.18 lab validation PASSED** on RHEL 9 (`server1`, 192.168.122.95):
+  `sudo rpm -i kvmchaos-0.18.0-1.el9.x86_64.rpm` installed cleanly,
+  `kvmchaos --version` returned `0.18.0`. No Python on host required.
+  Note: bash completion dropped (CLI has `add_completion=False`).
 - **Phase 6 — Multi-target / Cloud:** multi-VM concurrent experiments,
   ssh-based remote executor, cloud provider backends (AWS/GCP). Needs design.
 
