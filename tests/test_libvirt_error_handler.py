@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -96,3 +97,28 @@ def test_connect_triggers_registration(monkeypatch: pytest.MonkeyPatch) -> None:
         f"_register_once must be called before libvirt.open; got order: {calls}"
     )
     assert libvirt_conn._HANDLER_REGISTERED is True
+
+
+def test_verbose_routes_libvirt_stderr_to_json_log(
+    tmp_path: Path,
+) -> None:
+    """With --verbose + --json-log, a libvirt error produces a structured DEBUG line."""
+    from kvmchaos import libvirt_conn
+
+    log_file = tmp_path / "events.jsonl"
+    obs_logging.configure_stderr_logging(verbose=True, json_log_path=log_file)
+    libvirt_conn._libvirt_error_handler(
+        None,
+        _fake_err(message="simulated libvirt error", code=7, domain=3, level=2),
+    )
+
+    content = log_file.read_text(encoding="utf-8")
+    lines = [line for line in content.splitlines() if line]
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["event"] == "libvirt.stderr"
+    assert record["level"] == "DEBUG"
+    assert record["message"] == "simulated libvirt error"
+    assert record["code"] == 7
+    assert record["domain"] == 3
+    assert record["libvirt_level"] == 2
