@@ -785,6 +785,26 @@ class TestAbortAll:
         assert "Aborted" in result.output
 
 
+class TestRunCmd:
+    def test_step_outcome_failure_returned_not_raised(self, tmp_path, monkeypatch) -> None:
+        """_run_experiment_step_on_vm returns _StepOutcome(success=False) instead of raising."""
+        from kvmchaos.cli import _run_experiment_step_on_vm, _StepOutcome
+        from kvmchaos.experiment import Step
+
+        step = Step(fault="vm.pause", vm="missing-vm")
+        outcome = _run_experiment_step_on_vm(
+            step,
+            "missing-vm",
+            resolved_uri="test:///default",
+            dry_run=False,
+            config_path=None,
+            force=True,
+        )
+        assert isinstance(outcome, _StepOutcome)
+        assert outcome.success is False
+        assert outcome.vm == "missing-vm"
+
+
 class TestRunExperiment:
     def test_missing_file_exits_2(self, tmp_path) -> None:
         result = runner.invoke(app, ["run", str(tmp_path / "nope.toml")])
