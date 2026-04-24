@@ -13,14 +13,10 @@ uv run pyinstaller \
   --distpath dist/ \
   packaging/entrypoint.py
 
-# Generate bash completion from the uv venv (--show-completion unavailable in frozen binary)
-uv run kvmchaos --show-completion bash > packaging/kvmchaos-bash-completion
-
 # Set up rpmbuild directory tree
 mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-cp dist/kvmchaos                       ~/rpmbuild/SOURCES/kvmchaos
-cp packaging/kvmchaos-bash-completion  ~/rpmbuild/SOURCES/kvmchaos-bash-completion
-cp packaging/kvmchaos.spec             ~/rpmbuild/SPECS/kvmchaos.spec
+cp dist/kvmchaos        ~/rpmbuild/SOURCES/kvmchaos
+cp packaging/kvmchaos.spec ~/rpmbuild/SPECS/kvmchaos.spec
 
 # Build RPM
 rpmbuild -bb ~/rpmbuild/SPECS/kvmchaos.spec
