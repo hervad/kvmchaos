@@ -11,6 +11,7 @@ fault logic lives in `kvmchaos.faults`.
 
 from __future__ import annotations
 
+import functools
 import json
 import signal
 import time
@@ -1081,20 +1082,16 @@ def _run_experiment_step(
         One :class:`_StepOutcome` per VM in ``step.vms``.
     """
     max_workers = min(len(step.vms), 8)
+    worker = functools.partial(
+        _run_experiment_step_on_vm,
+        step,
+        resolved_uri=resolved_uri,
+        dry_run=dry_run,
+        config_path=config_path,
+        force=force,
+    )
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        return list(
-            pool.map(
-                lambda vm_name: _run_experiment_step_on_vm(
-                    step,
-                    vm_name,
-                    resolved_uri=resolved_uri,
-                    dry_run=dry_run,
-                    config_path=config_path,
-                    force=force,
-                ),
-                step.vms,
-            )
-        )
+        return list(pool.map(worker, step.vms))
 
 
 def _run_step(
