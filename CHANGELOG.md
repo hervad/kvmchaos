@@ -6,7 +6,16 @@ All notable changes to kvmchaos. Format loosely follows
 
 ## [Unreleased]
 
-None yet.
+## [0.17.0] — 2026-04-NN
+
+### Added
+- `--json-log PATH` root flag appends structured events as pure JSONL to
+  a file alongside the existing stderr stream.
+
+### Changed
+- libvirt C-library stderr messages are captured on the
+  `kvmchaos.observability.libvirt` logger at DEBUG level instead of
+  leaking to fd 2. Visible with `--verbose`.
 
 ## [0.16.0] — 2026-04-23
 
