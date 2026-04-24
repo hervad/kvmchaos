@@ -8,13 +8,63 @@ agree on which hypervisor they are talking to.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 
 import libvirt
 
+_LIBVIRT_LOG = logging.getLogger("kvmchaos.observability.libvirt")
+
+
+def _libvirt_error_handler(_ctx: object, err: tuple) -> None:
+    """Forward libvirt C-library errors to the observability logger.
+
+    libvirt calls this for every error normally written to stderr via
+    its C-level logging. Routing the message to our ``kvmchaos.observability
+    .libvirt`` child logger at DEBUG keeps the information available
+    under ``--verbose`` while silencing it in the default INFO mode.
+
+    Args:
+        _ctx: Opaque context pointer — unused; required by libvirt's signature.
+        err: Tuple as documented in libvirt's ``virErrorSetCallback``.
+            The first four fields are ``(code, domain, message, level)``.
+    """
+    code, domain, message, level, *_ = err
+    _LIBVIRT_LOG.debug(
+        message,
+        extra={
+            "event": "libvirt.stderr",
+            "code": code,
+            "domain": domain,
+            "libvirt_level": level,
+        },
+    )
+
+
 DEFAULT_URI = "qemu:///system"
+
+
+_HANDLER_REGISTERED = False
+
+
+def _register_once() -> None:
+    """Register the libvirt error handler at most once per process.
+
+    Safe to call from every ``connect()`` — subsequent calls are no-ops.
+    """
+    global _HANDLER_REGISTERED
+    if _HANDLER_REGISTERED:
+        return
+    libvirt.registerErrorHandler(_libvirt_error_handler, None)
+    _HANDLER_REGISTERED = True
+
+
+def _reset_registration_for_tests() -> None:
+    """Test-only helper: clear the registration flag so tests can re-register."""
+    global _HANDLER_REGISTERED
+    _HANDLER_REGISTERED = False
 
 
 def resolve_uri(cli_flag: str | None) -> str:
@@ -38,6 +88,9 @@ def resolve_uri(cli_flag: str | None) -> str:
 def connect(uri: str | None = None) -> Iterator[libvirt.virConnect]:
     """Open a libvirt connection and close it on exit.
 
+    Registers the libvirt C-library error handler (idempotent) before
+    opening the connection so errors are captured from the first call onward.
+
     Args:
         uri: Optional explicit URI. If None, `resolve_uri` is consulted.
 
@@ -48,6 +101,7 @@ def connect(uri: str | None = None) -> Iterator[libvirt.virConnect]:
     Raises:
         libvirt.libvirtError: If the connection cannot be opened.
     """
+    _register_once()
     resolved = resolve_uri(uri)
     conn = libvirt.open(resolved)
     if conn is None:

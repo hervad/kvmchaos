@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -128,3 +129,56 @@ def test_root_callback_initialises_observability(monkeypatch: pytest.MonkeyPatch
     assert result.exit_code == 0
     logger = _logging.getLogger("kvmchaos.observability")
     assert any(getattr(h, "_kvmchaos_obs", False) for h in logger.handlers)
+
+
+def test_json_log_flag_writes_pure_jsonl(captured_notifier: MagicMock, tmp_path: Path) -> None:
+    """--json-log writes one JSON object per event to the target file."""
+    import json as _json
+
+    log_file = tmp_path / "events.jsonl"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "--connect",
+            "test:///default",
+            "--json-log",
+            str(log_file),
+            "inject",
+            "vm.pause",
+            "test",
+            "--duration",
+            "0",
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    content = log_file.read_text(encoding="utf-8")
+    lines = [line for line in content.splitlines() if line]
+    events = [_json.loads(line)["event"] for line in lines]
+    assert ev.INJECT_START in events
+    assert ev.INJECT_SUCCESS in events
+    assert ev.REVERT_SUCCESS in events
+    # Every line must be strictly valid JSON.
+    for line in lines:
+        _json.loads(line)
+
+
+def test_json_log_unwritable_path_fails_fast(tmp_path: Path) -> None:
+    """An unwritable --json-log target exits with code 2 and a clear message."""
+    missing_dir = tmp_path / "does" / "not" / "exist"
+    bad_path = missing_dir / "events.jsonl"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "--connect",
+            "test:///default",
+            "--json-log",
+            str(bad_path),
+            "list-vms",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "--json-log" in result.stderr or "json-log" in result.stderr
+    assert str(bad_path) in result.stderr
