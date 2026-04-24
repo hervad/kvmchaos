@@ -98,6 +98,14 @@ Artefacts:
 - Tests: 414 passing, 95% coverage
 - Ruff: clean; format clean
 
+## Known follow-ups
+
+- `docs/superpowers/followups/2026-04-24-observability-stderr-mixed-stream.md`
+  — v0.16 stderr interleaves JSON events with libvirt C-lib error lines and
+  Typer status messages, so naive `jq .` consumers break. Not blocking;
+  webhook sink unaffected. Recommend `--json-log PATH` flag + libvirt error
+  handler suppression for a future release.
+
 ## What's next (after v0.16.0 lab validation + merge)
 
 - **Phase 5 — Distribution:** PyPI package, shell completion, RPM/DEB specs,
