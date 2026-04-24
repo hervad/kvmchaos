@@ -88,6 +88,9 @@ def resolve_uri(cli_flag: str | None) -> str:
 def connect(uri: str | None = None) -> Iterator[libvirt.virConnect]:
     """Open a libvirt connection and close it on exit.
 
+    Registers the libvirt C-library error handler (idempotent) before
+    opening the connection so errors are captured from the first call onward.
+
     Args:
         uri: Optional explicit URI. If None, `resolve_uri` is consulted.
 
@@ -98,6 +101,7 @@ def connect(uri: str | None = None) -> Iterator[libvirt.virConnect]:
     Raises:
         libvirt.libvirtError: If the connection cannot be opened.
     """
+    _register_once()
     resolved = resolve_uri(uri)
     conn = libvirt.open(resolved)
     if conn is None:

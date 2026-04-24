@@ -58,3 +58,17 @@ def _reset_observability_logging() -> Iterator[None]:
     yield
     obs_logging._reset_for_tests()
     set_notifier(None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_libvirt_registration() -> Iterator[None]:
+    """Reset the libvirt error handler registration flag between tests.
+
+    Prevents cross-test pollution of the module-level ``_HANDLER_REGISTERED``
+    flag that ``_register_once`` sets.
+    """
+    from kvmchaos import libvirt_conn
+
+    libvirt_conn._reset_registration_for_tests()
+    yield
+    libvirt_conn._reset_registration_for_tests()
