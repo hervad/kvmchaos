@@ -93,18 +93,24 @@ def _root(
         "--verbose",
         help="Enable DEBUG-level observability logging.",
     ),
+    json_log: Path | None = typer.Option(
+        None,
+        "--json-log",
+        help="Append structured events to PATH as pure JSONL.",
+    ),
 ) -> None:
-    """Root callback — stashes --connect URI on the Typer context.
+    """Root callback — stashes --connect URI on the Typer context and wires observability sinks.
 
     Args:
         ctx: Typer context object; used to pass the connect URI to subcommands.
         version: If True, print version and exit (handled by eager callback).
         connect_uri: libvirt URI override. Stored on ctx.obj for subcommands.
         verbose: If True, enable DEBUG-level observability logging.
+        json_log: Optional PATH for a pure-JSONL file sink.
     """
     ctx.ensure_object(dict)
     ctx.obj[_CTX_KEY] = connect_uri
-    obs_logging.configure_stderr_logging(verbose=verbose)
+    obs_logging.configure_stderr_logging(verbose=verbose, json_log_path=json_log)
     cfg = load_config(None)
     _obs_set_notifier(Notifier(cfg.notifier))
 
