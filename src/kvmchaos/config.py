@@ -69,12 +69,34 @@ class RateLimitConfig:
         return self.injects_per_hour > 0 or self.min_interval_between_destructive_seconds > 0
 
 
+class ConfigError(ValueError):
+    """Raised when a config file is structurally invalid."""
+
+
+@dataclass(frozen=True)
+class NotifierConfig:
+    """Webhook notifier settings.
+
+    A ``webhook_url`` of ``""`` (the default) disables the notifier entirely.
+    """
+
+    webhook_url: str = ""
+    auth_header: str = ""
+    timeout_s: int = 3
+    events: tuple[str, ...] = ()  # () means "all events"
+
+    def is_enabled(self) -> bool:
+        """Return True when a webhook target is configured."""
+        return bool(self.webhook_url)
+
+
 @dataclass(frozen=True)
 class Config:
     """Top-level config container."""
 
     allowlist: AllowlistConfig = field(default_factory=AllowlistConfig)
     rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
+    notifier: NotifierConfig = field(default_factory=NotifierConfig)
 
 
 def _candidate_paths() -> list[Path]:
@@ -122,6 +144,7 @@ def load_config(explicit: Path | None = None) -> Config:
     Raises:
         FileNotFoundError: If ``explicit`` is given but does not exist.
         tomllib.TOMLDecodeError: If the config file is not valid TOML.
+        ConfigError: If any config section is structurally invalid.
     """
     path = resolve_config_path(explicit)
     if path is None:
@@ -129,6 +152,8 @@ def load_config(explicit: Path | None = None) -> Config:
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     al = data.get("allowlist", {})
     rl = data.get("rate_limit", {})
+    nf_raw = data.get("notifier", {})
+    nf = _parse_notifier_section(nf_raw)
     return Config(
         allowlist=AllowlistConfig(
             vms=tuple(al.get("vms", [])),
@@ -140,6 +165,41 @@ def load_config(explicit: Path | None = None) -> Config:
                 rl.get("min_interval_between_destructive_seconds", 0)
             ),
         ),
+        notifier=nf,
+    )
+
+
+def _parse_notifier_section(raw: object) -> NotifierConfig:
+    """Validate and convert the raw [notifier] table into a NotifierConfig.
+
+    Args:
+        raw: The value of ``data["notifier"]`` from tomllib (dict or {} default).
+
+    Returns:
+        A `NotifierConfig` instance.
+
+    Raises:
+        ConfigError: If any field has the wrong type.
+    """
+    if not isinstance(raw, dict):
+        raise ConfigError(f"[notifier] must be a table, got {type(raw).__name__}")
+    url = raw.get("webhook_url", "")
+    if not isinstance(url, str):
+        raise ConfigError(f"notifier.webhook_url must be a string, got {type(url).__name__}")
+    auth = raw.get("auth_header", "")
+    if not isinstance(auth, str):
+        raise ConfigError(f"notifier.auth_header must be a string, got {type(auth).__name__}")
+    timeout = raw.get("timeout_s", 3)
+    if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
+        raise ConfigError(f"notifier.timeout_s must be a positive int, got {timeout!r}")
+    events = raw.get("events", [])
+    if not isinstance(events, list) or not all(isinstance(e, str) for e in events):
+        raise ConfigError("notifier.events must be a list of strings")
+    return NotifierConfig(
+        webhook_url=url,
+        auth_header=auth,
+        timeout_s=timeout,
+        events=tuple(events),
     )
 
 

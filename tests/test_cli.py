@@ -265,7 +265,7 @@ class TestBandwidthFlag:
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
 
-        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False, **kwargs):
             return {"action": action, "result": "skipped", "duration_ms": 0}
 
         with (
@@ -347,7 +347,7 @@ class TestDiskFillCli:
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
 
-        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False, **kwargs):
             return {"action": action, "result": "skipped", "duration_ms": 0}
 
         with (
@@ -450,7 +450,7 @@ class TestClockSkewCli:
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
 
-        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False, **kwargs):
             return {"action": action, "result": "skipped", "duration_ms": 0}
 
         with (
@@ -498,7 +498,7 @@ class TestNetPacketLossCli:
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
 
-        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False, **kwargs):
             return {"action": action, "result": "skipped", "duration_ms": 0}
 
         with (
@@ -538,7 +538,7 @@ class TestNetBandwidthCli:
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
 
-        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False, **kwargs):
             return {"action": action, "result": "skipped", "duration_ms": 0}
 
         with (
@@ -578,7 +578,7 @@ class TestNetCorruptCli:
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
 
-        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False):
+        def capturing_run_step(func, domain, *, action, fault_name, vm, dry_run=False, **kwargs):
             return {"action": action, "result": "skipped", "duration_ms": 0}
 
         with (

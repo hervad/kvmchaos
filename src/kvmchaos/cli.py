@@ -35,6 +35,11 @@ from kvmchaos.faults.net_bandwidth import NetBandwidthFault
 from kvmchaos.faults.net_corrupt import NetCorruptFault
 from kvmchaos.faults.net_packet_loss import NetPacketLossFault
 from kvmchaos.libvirt_conn import connect, resolve_uri
+from kvmchaos.observability import emit as _obs_emit
+from kvmchaos.observability import events as obs_events
+from kvmchaos.observability import logging as obs_logging
+from kvmchaos.observability import set_notifier as _obs_set_notifier
+from kvmchaos.observability.notifier import Notifier
 from kvmchaos.report import load_records, render_html
 from kvmchaos.runrecord import (
     default_runs_dir,
@@ -83,6 +88,11 @@ def _root(
         "--connect",
         help="libvirt URI (overrides LIBVIRT_DEFAULT_URI).",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Enable DEBUG-level observability logging.",
+    ),
 ) -> None:
     """Root callback — stashes --connect URI on the Typer context.
 
@@ -90,9 +100,13 @@ def _root(
         ctx: Typer context object; used to pass the connect URI to subcommands.
         version: If True, print version and exit (handled by eager callback).
         connect_uri: libvirt URI override. Stored on ctx.obj for subcommands.
+        verbose: If True, enable DEBUG-level observability logging.
     """
     ctx.ensure_object(dict)
     ctx.obj[_CTX_KEY] = connect_uri
+    obs_logging.configure_stderr_logging(verbose=verbose)
+    cfg = load_config(None)
+    _obs_set_notifier(Notifier(cfg.notifier))
 
 
 @app.command("list-vms")
@@ -619,9 +633,15 @@ def inject_cmd(
     if fault_name == "clock.skew" and skew == 0:
         typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)
         raise typer.Exit(code=2)
-    fault = _build_fault(
-        fault_name, bandwidth=bandwidth, size=size, loss=loss, rate=rate, corrupt=corrupt, skew=skew
-    )
+    fault_params: dict[str, object] = {
+        "bandwidth": bandwidth,
+        "size": size,
+        "loss": loss,
+        "rate": rate,
+        "corrupt": corrupt,
+        "skew": skew,
+    }
+    fault = _build_fault(fault_name, **fault_params)  # type: ignore[arg-type]
 
     if not force:
         try:
@@ -672,7 +692,14 @@ def inject_cmd(
         steps: list[dict[str, object]] = []
 
         inject_step = _run_step(
-            fault.inject, domain, action="inject", fault_name=fault_name, vm=vm, dry_run=dry_run
+            fault.inject,
+            domain,
+            action="inject",
+            fault_name=fault_name,
+            vm=vm,
+            dry_run=dry_run,
+            inject_params=fault_params,
+            duration_s=duration,
         )
         steps.append(inject_step)
         if inject_step["result"] == "fail":
@@ -809,28 +836,49 @@ def run_cmd(
         typer.echo("Aborted.")
         raise typer.Exit(code=1)
 
+    exp_t0 = time.monotonic()
+    exp_status = "ok"
+    _obs_emit(
+        obs_events.EXPERIMENT_START,
+        recipe_path=str(experiment_path),
+        step_count=len(experiment.steps),
+    )
+
     failed_steps = 0
-    for i, step in enumerate(experiment.steps, start=1):
-        typer.echo(f"\n--- step {i}/{len(experiment.steps)}: {step.fault} on {step.vm} ---")
-        try:
-            _run_experiment_step(
-                step,
-                resolved_uri=resolved_uri,
-                dry_run=dry_run,
-                config_path=config_path,
-                force=force,
-            )
-        except typer.Exit as exc:
-            failed_steps += 1
-            code = exc.exit_code if isinstance(exc.exit_code, int) else 1
-            if step.continue_on_failure:
-                typer.echo(
-                    f"step {i} failed (exit {code}); continuing (continue_on_failure=true).",
-                    err=True,
+    try:
+        for i, step in enumerate(experiment.steps, start=1):
+            typer.echo(f"\n--- step {i}/{len(experiment.steps)}: {step.fault} on {step.vm} ---")
+            try:
+                _run_experiment_step(
+                    step,
+                    resolved_uri=resolved_uri,
+                    dry_run=dry_run,
+                    config_path=config_path,
+                    force=force,
                 )
-                continue
-            typer.echo(f"step {i} failed (exit {code}); stopping experiment.", err=True)
-            raise typer.Exit(code=1) from exc
+            except typer.Exit as exc:
+                failed_steps += 1
+                code = exc.exit_code if isinstance(exc.exit_code, int) else 1
+                if step.continue_on_failure:
+                    typer.echo(
+                        f"step {i} failed (exit {code}); continuing (continue_on_failure=true).",
+                        err=True,
+                    )
+                    continue
+                typer.echo(f"step {i} failed (exit {code}); stopping experiment.", err=True)
+                raise typer.Exit(code=1) from exc
+    except Exception:
+        exp_status = "error"
+        raise
+    finally:
+        if exp_status == "ok" and failed_steps > 0:
+            exp_status = "partial"
+        _obs_emit(
+            obs_events.EXPERIMENT_END,
+            recipe_path=str(experiment_path),
+            status=exp_status,
+            elapsed_s=round(time.monotonic() - exp_t0, 3),
+        )
 
     if failed_steps:
         typer.echo(f"\nExperiment finished with {failed_steps} failure(s).", err=True)
@@ -991,6 +1039,8 @@ def _run_step(
     fault_name: str,
     vm: str,
     dry_run: bool = False,
+    inject_params: dict[str, object] | None = None,
+    duration_s: int | None = None,
 ) -> dict[str, object]:
     """Execute one fault step (inject, verify, or revert) and log the outcome.
 
@@ -1001,6 +1051,10 @@ def _run_step(
         fault_name: Fault registry key, included in the log event.
         vm: VM name, included in the log event.
         dry_run: If True, print a plan line and return without calling func or logging.
+        inject_params: Fault-specific parameters (inject action only), included in the
+            ``inject.start`` event payload.
+        duration_s: Seconds the fault will be held (inject action only), included in
+            the ``inject.start`` event payload.
 
     Returns:
         Dict with ``action``, ``result`` (``'ok'``, ``'fail'``, or ``'skipped'``),
@@ -1009,6 +1063,32 @@ def _run_step(
     if dry_run:
         typer.echo(f"[dry-run] would: {action} {fault_name} on {vm}")
         return {"action": action, "result": "skipped", "duration_ms": 0}
+
+    start_event_map = {
+        "inject": obs_events.INJECT_START,
+        "revert": None,
+        "verify": None,
+    }
+    success_event_map = {
+        "inject": obs_events.INJECT_SUCCESS,
+        "revert": obs_events.REVERT_SUCCESS,
+        "verify": None,
+    }
+    error_event_map = {
+        "inject": obs_events.INJECT_ERROR,
+        "revert": obs_events.REVERT_ERROR,
+        "verify": None,
+    }
+
+    start_event = start_event_map.get(action)
+    if start_event is not None:
+        extra: dict[str, object] = {"fault": fault_name, "vm": vm}
+        if inject_params is not None:
+            extra["params"] = inject_params
+        if duration_s is not None:
+            extra["duration_s"] = duration_s
+        _obs_emit(start_event, **extra)
+
     t0 = time.monotonic()
     try:
         func(domain)
@@ -1022,10 +1102,28 @@ def _run_step(
             duration_ms=duration_ms,
             error=str(exc),
         )
+        err_event = error_event_map.get(action)
+        if err_event is not None:
+            _obs_emit(
+                err_event,
+                fault=fault_name,
+                vm=vm,
+                error=str(exc),
+                error_type=type(exc).__name__,
+                elapsed_s=round(duration_ms / 1000, 3),
+            )
         typer.echo(f"{action} error: {exc}", err=True)
         return {"action": action, "result": "fail", "duration_ms": duration_ms, "error": str(exc)}
     duration_ms = int((time.monotonic() - t0) * 1000)
     log_event(action=action, fault=fault_name, vm=vm, result="ok", duration_ms=duration_ms)
+    ok_event = success_event_map.get(action)
+    if ok_event is not None:
+        _obs_emit(
+            ok_event,
+            fault=fault_name,
+            vm=vm,
+            elapsed_s=round(duration_ms / 1000, 3),
+        )
     return {"action": action, "result": "ok", "duration_ms": duration_ms}
 
 

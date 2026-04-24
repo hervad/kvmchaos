@@ -1,7 +1,7 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-23
-**Status:** v0.15.0 — productisation milestone.
+**Saved:** 2026-04-24
+**Status:** v0.16.0 implementation complete on `feat/v0.16-observability` — **lab validation 2026-04-24 passed**. Ready for merge to `main` and `v0.16.0` tag.
 
 ## What's done
 
@@ -17,7 +17,7 @@ Foundational faults, run records, HTML report, production hardening.
 
 `tc netem corrupt`; all 12 faults now shipped.
 
-### v0.15.0 (this session)
+### v0.15.0
 
 **Code audit & refactor**
 - `tc.assert_netem_active` consolidates five duplicate `verify()` methods.
@@ -42,17 +42,62 @@ Foundational faults, run records, HTML report, production hardening.
 - Five recipes in `docs/recipes/`.
 - README troubleshooting table.
 
+### v0.16.0 (last session — implementation done, lab validation pending)
+
+Branch: `feat/v0.16-observability` (14 commits, NOT yet merged to `main`).
+Spec: `docs/superpowers/specs/2026-04-23-kvmchaos-v0.16-observability-design.md`
+Plan: `docs/superpowers/plans/2026-04-23-kvmchaos-v0.16-observability.md`
+
+**Observability (Phase 4)**
+- New `kvmchaos.observability` package: `events`, `logging`, `notifier`,
+  `emit` fan-out, plus `__init__` re-exporting the public surface.
+- Seven events emitted from `_run_step` and `run_cmd`:
+  `inject.start/success/error`, `revert.success/error`,
+  `experiment.start/end`.
+- `experiment.end` reports `status="partial"` when `continue_on_failure`
+  absorbs step failures (caught by final review, fixed in `98f76e3`).
+- `[notifier]` config section + `ConfigError` validation in `config.py`.
+- `--verbose` on root CLI for DEBUG observability logs.
+- Prometheus `/metrics` and Slack-native formatting deferred (see spec §6).
+
+**Lab validation 2026-04-24 passed** on Fedora 43 / `qemu:///system`, VM `server1`:
+
+- Run 1 (listener up, duration=5s): exit 0. Stderr emitted three INFO JSON
+  events (`inject.start` → `inject.success` → `revert.success`). The local
+  sink at `http://127.0.0.1:8000/hook` received three POSTs with bodies
+  matching the stderr payloads (`event`, `fault=vm.pause`, `vm=server1`,
+  `elapsed_s`, etc.). All POSTs returned HTTP 200.
+- Run 2 (listener down, duration=3s): exit 0. Stderr emitted the same three
+  INFO events interleaved with three WARNING lines
+  (`notifier: transport error ... [Errno 111] Connection refused`). Fault
+  was injected and reverted cleanly; notifier failure did not propagate.
+
+Artefacts:
+
+- Config used: `~/.config/kvmchaos/config.toml` with
+  `[notifier] webhook_url = "http://127.0.0.1:8000/hook"`.
+- Run records: `~/.local/state/kvmchaos/runs/20260424T094529Z-...json` and
+  `20260424T094606Z-...json`.
+- Capture script: `/tmp/kvmchaos-lab/hook_server.py` (logs POST bodies to
+  `hook.log`).
+
+**Resume here next session:**
+
+1. `git checkout main && git merge --no-ff feat/v0.16-observability`, tag
+   `v0.16.0`, push branch + tag. (Release workflow will build sdist+wheel.)
+2. Optionally delete the local + remote `feat/v0.16-observability` branch.
+3. Start Phase 5 (Distribution) — see "What's next" below.
+
 ## Repo state
 
-- Git branch: `main`
-- Tests: 386 passing, 95% coverage
+- Git branch: `feat/v0.16-observability` (NOT merged to `main`)
+- `main` last commit: `f013c19` (v0.15.0)
+- Branch HEAD: `98f76e3` (post-final-review fixes)
+- Tests: 414 passing, 95% coverage
 - Ruff: clean; format clean
-- `ty` advisory: 9 pre-existing libvirt-stub false positives
 
-## What's next
+## What's next (after v0.16.0 lab validation + merge)
 
-- **Phase 4 — Observability:** structured journald logs, Prometheus `/metrics`
-  endpoint, Slack/webhook notifier on inject start/end.
 - **Phase 5 — Distribution:** PyPI package, shell completion, RPM/DEB specs,
   container image.
 - **Phase 6 — Multi-target / Cloud:** multi-VM concurrent experiments,
