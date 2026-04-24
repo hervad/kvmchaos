@@ -111,10 +111,14 @@ def _reset_for_tests() -> None:
 
     Test-only helper. Restores propagation so `caplog` (which depends on the
     root logger seeing child records) keeps working in subsequent tests.
+    Closes file handles to avoid cross-test leakage.
     """
     logger = logging.getLogger(LOGGER_NAME)
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
+        handler.close()
     logger.propagate = True
     notifier_logger = logging.getLogger(LOGGER_NAME + ".notifier")
     notifier_logger.propagate = True
+    libvirt_logger = logging.getLogger(LOGGER_NAME + ".libvirt")
+    libvirt_logger.propagate = True

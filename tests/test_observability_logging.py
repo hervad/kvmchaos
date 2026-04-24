@@ -120,3 +120,24 @@ def test_json_log_path_is_idempotent(_configure_obs_logging: None, tmp_path: Pat
     content = log_file.read_text(encoding="utf-8")
     lines = [line for line in content.splitlines() if line]
     assert len(lines) == 1
+
+
+def test_reset_closes_file_handler(_configure_obs_logging: None, tmp_path: Path) -> None:
+    """_reset_for_tests detaches and closes the file handler."""
+    log_file = tmp_path / "events.jsonl"
+    obs_logging.configure_stderr_logging(verbose=False, json_log_path=log_file)
+    logger = logging.getLogger("kvmchaos.observability")
+    file_handlers_before = [h for h in logger.handlers if getattr(h, "_kvmchaos_obs_file", False)]
+    assert len(file_handlers_before) == 1
+    assert not file_handlers_before[0].stream.closed
+
+    obs_logging._reset_for_tests()
+
+    file_handlers_after = [
+        h
+        for h in logging.getLogger("kvmchaos.observability").handlers
+        if getattr(h, "_kvmchaos_obs_file", False)
+    ]
+    assert file_handlers_after == []
+    # FileHandler.close() sets stream to None; None stream means closed.
+    assert file_handlers_before[0].stream is None
