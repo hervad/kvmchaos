@@ -1,5 +1,8 @@
 # Follow-up: v0.16 observability stderr is a mixed stream
 
+**Status:** Resolved in v0.17.0 — see
+`docs/superpowers/specs/2026-04-24-kvmchaos-v0.17-clean-streams-design.md`.
+
 **Filed:** 2026-04-24 (discovered during v0.16.0 lab validation)
 **Severity:** Usability gap — not a correctness bug. Webhook sink is unaffected.
 

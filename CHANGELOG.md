@@ -6,7 +6,7 @@ All notable changes to kvmchaos. Format loosely follows
 
 ## [Unreleased]
 
-## [0.17.0] — 2026-04-NN
+## [0.17.0] — 2026-04-24
 
 ### Added
 
