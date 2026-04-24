@@ -54,7 +54,7 @@ jobs:
         run: |
           dnf install -y 'dnf-command(config-manager)'
           dnf config-manager --set-enabled crb
-          dnf install -y python3.11 python3.11-pip rpm-build libvirt-devel pkg-config
+          dnf install -y python3.11 python3.11-pip rpm-build libvirt-devel pkg-config gcc
           pip3.11 install uv
 
       - name: Install project dependencies
