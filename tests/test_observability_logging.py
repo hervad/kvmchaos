@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -90,3 +91,32 @@ def test_caller_supplied_timestamp_overrides_formatter(
     captured = capsys.readouterr()
     record = json.loads(captured.err.strip())
     assert record["timestamp"] == "2099-01-01T00:00:00+00:00"
+
+
+def test_json_log_path_writes_pure_jsonl(_configure_obs_logging: None, tmp_path: Path) -> None:
+    """--json-log target receives one JSON object per logger call."""
+    log_file = tmp_path / "events.jsonl"
+    obs_logging.configure_stderr_logging(verbose=False, json_log_path=log_file)
+    logger = logging.getLogger("kvmchaos.observability")
+    logger.info("first", extra={"event": "inject.start", "fault": "vm.pause"})
+    logger.info("second", extra={"event": "inject.success", "fault": "vm.pause"})
+
+    content = log_file.read_text(encoding="utf-8")
+    lines = [line for line in content.splitlines() if line]
+    assert len(lines) == 2
+    first = json.loads(lines[0])
+    second = json.loads(lines[1])
+    assert first["event"] == "inject.start"
+    assert second["event"] == "inject.success"
+
+
+def test_json_log_path_is_idempotent(_configure_obs_logging: None, tmp_path: Path) -> None:
+    """Re-configuring with the same path does not double-attach the file handler."""
+    log_file = tmp_path / "events.jsonl"
+    obs_logging.configure_stderr_logging(verbose=False, json_log_path=log_file)
+    obs_logging.configure_stderr_logging(verbose=False, json_log_path=log_file)
+    logger = logging.getLogger("kvmchaos.observability")
+    logger.info("once", extra={"event": "x"})
+    content = log_file.read_text(encoding="utf-8")
+    lines = [line for line in content.splitlines() if line]
+    assert len(lines) == 1

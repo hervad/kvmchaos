@@ -13,6 +13,7 @@ import json
 import logging
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 LOGGER_NAME = "kvmchaos.observability"
@@ -72,23 +73,37 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, separators=(",", ":"), default=str)
 
 
-def configure_stderr_logging(*, verbose: bool) -> None:
-    """Attach the JSON stderr handler to the observability logger.
+def configure_stderr_logging(*, verbose: bool, json_log_path: Path | None = None) -> None:
+    """Attach JSON handlers to the observability logger.
+
+    Always attaches a stderr stream handler. Optionally also attaches a
+    file handler that writes pure JSONL to ``json_log_path``.
 
     Idempotent: repeat calls update the level but do not duplicate handlers.
 
     Args:
         verbose: If True, set level to ``DEBUG``; otherwise ``INFO``.
+        json_log_path: If set, append structured events to this file as
+            pure JSONL. File is opened in append mode, created if missing.
+
+    Raises:
+        OSError: If ``json_log_path`` is set but cannot be opened.
     """
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
     logger.propagate = False
-    if any(getattr(h, "_kvmchaos_obs", False) for h in logger.handlers):
-        return
-    handler = logging.StreamHandler(stream=sys.stderr)
-    handler.setFormatter(JsonFormatter())
-    handler._kvmchaos_obs = True  # type: ignore[attr-defined]
-    logger.addHandler(handler)
+    if not any(getattr(h, "_kvmchaos_obs", False) for h in logger.handlers):
+        stream_handler = logging.StreamHandler(stream=sys.stderr)
+        stream_handler.setFormatter(JsonFormatter())
+        stream_handler._kvmchaos_obs = True  # type: ignore[attr-defined]
+        logger.addHandler(stream_handler)
+    if json_log_path is not None and not any(
+        getattr(h, "_kvmchaos_obs_file", False) for h in logger.handlers
+    ):
+        file_handler = logging.FileHandler(str(json_log_path), mode="a", encoding="utf-8")
+        file_handler.setFormatter(JsonFormatter())
+        file_handler._kvmchaos_obs_file = True  # type: ignore[attr-defined]
+        logger.addHandler(file_handler)
 
 
 def _reset_for_tests() -> None:
