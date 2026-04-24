@@ -1,7 +1,7 @@
 # RESUME — kvmchaos Checkpoint
 
 **Saved:** 2026-04-24
-**Status:** v0.16.0 implementation complete on `feat/v0.16-observability` — **lab validation 2026-04-24 passed**. Ready for merge to `main` and `v0.16.0` tag.
+**Status:** v0.16.0 merged to local `main` (merge commit `fbd2971`) and tagged `v0.16.0`. No git remote is configured, so nothing was pushed and the release workflow did not run.
 
 ## What's done
 
@@ -83,10 +83,12 @@ Artefacts:
 
 **Resume here next session:**
 
-1. `git checkout main && git merge --no-ff feat/v0.16-observability`, tag
-   `v0.16.0`, push branch + tag. (Release workflow will build sdist+wheel.)
-2. Optionally delete the local + remote `feat/v0.16-observability` branch.
-3. Start Phase 5 (Distribution) — see "What's next" below.
+1. If a GitHub remote is being added: `git remote add origin <url>`, then
+   `git push origin main` + `git push origin v0.16.0` — the existing
+   `.github/workflows/release.yml` will build sdist+wheel on the tag.
+2. Optionally delete the local `feat/v0.16-observability` branch once
+   you're sure you don't need to cherry-pick from it.
+3. Otherwise start Phase 5 (Distribution) — see "What's next" below.
 
 ## Repo state
 
