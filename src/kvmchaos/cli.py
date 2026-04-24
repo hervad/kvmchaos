@@ -16,7 +16,7 @@ import signal
 import time
 import urllib.parse
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor  # noqa: F401  used in Task 5
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass as _dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1058,6 +1058,43 @@ def _run_experiment_step_on_vm(
     except typer.Exit as exc:
         code = exc.exit_code if isinstance(exc.exit_code, int) else 1
         return _StepOutcome(vm=vm_name, success=False, exit_code=code)
+
+
+def _run_experiment_step(
+    step: Step,
+    *,
+    resolved_uri: str,
+    dry_run: bool,
+    config_path: Path | None,
+    force: bool,
+) -> list[_StepOutcome]:
+    """Fan out step across all target VMs, executing in parallel.
+
+    Args:
+        step: Experiment step with one or more target VMs in ``step.vms``.
+        resolved_uri: Already-resolved libvirt URI.
+        dry_run: If True, print plan only.
+        config_path: Optional config file override.
+        force: If True, bypass safety checks.
+
+    Returns:
+        One :class:`_StepOutcome` per VM in ``step.vms``.
+    """
+    max_workers = min(len(step.vms), 8)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        return list(
+            pool.map(
+                lambda vm_name: _run_experiment_step_on_vm(
+                    step,
+                    vm_name,
+                    resolved_uri=resolved_uri,
+                    dry_run=dry_run,
+                    config_path=config_path,
+                    force=force,
+                ),
+                step.vms,
+            )
+        )
 
 
 def _run_step(

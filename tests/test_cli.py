@@ -804,6 +804,59 @@ class TestRunCmd:
         assert outcome.success is False
         assert outcome.vm == "missing-vm"
 
+    def test_fan_out_calls_all_vms(self, tmp_path, monkeypatch) -> None:
+        """_run_experiment_step calls _run_experiment_step_on_vm for each VM in step.vms."""
+        import kvmchaos.cli as cli_mod
+        from kvmchaos.cli import _run_experiment_step, _StepOutcome
+        from kvmchaos.experiment import Step
+
+        called: list[str] = []
+
+        def fake_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+            called.append(vm_name)
+            return _StepOutcome(vm=vm_name, success=True)
+
+        monkeypatch.setattr(cli_mod, "_run_experiment_step_on_vm", fake_on_vm)
+
+        step = Step(fault="vm.pause", vms=("db1", "db2"))
+        outcomes = _run_experiment_step(
+            step,
+            resolved_uri="test:///default",
+            dry_run=False,
+            config_path=None,
+            force=True,
+        )
+        assert sorted(called) == ["db1", "db2"]
+        assert len(outcomes) == 2
+        assert all(o.success for o in outcomes)
+
+    def test_fan_out_complete_then_report(self, tmp_path, monkeypatch) -> None:
+        """All VMs run even when one fails (complete-then-report)."""
+        import kvmchaos.cli as cli_mod
+        from kvmchaos.cli import _run_experiment_step, _StepOutcome
+        from kvmchaos.experiment import Step
+
+        called: list[str] = []
+
+        def fake_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+            called.append(vm_name)
+            success = vm_name != "bad"
+            return _StepOutcome(vm=vm_name, success=success, exit_code=0 if success else 1)
+
+        monkeypatch.setattr(cli_mod, "_run_experiment_step_on_vm", fake_on_vm)
+
+        step = Step(fault="vm.pause", vms=("good", "bad"))
+        outcomes = _run_experiment_step(
+            step,
+            resolved_uri="test:///default",
+            dry_run=False,
+            config_path=None,
+            force=True,
+        )
+        assert sorted(called) == ["bad", "good"]  # both ran
+        assert sum(1 for o in outcomes if not o.success) == 1
+        assert sum(1 for o in outcomes if o.success) == 1
+
 
 class TestRunExperiment:
     def test_missing_file_exits_2(self, tmp_path) -> None:
