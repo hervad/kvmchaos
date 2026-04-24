@@ -83,3 +83,30 @@ class TestLoadExperiment:
         path.write_text('name = "x"\n\n[[step]]\nfault = "vm.pause"\n')
         with pytest.raises(ValueError, match="missing 'vm'"):
             load_experiment(path)
+
+
+class TestStep:
+    def test_vm_normalised_to_vms(self) -> None:
+        s = Step(fault="vm.pause", vm="db1")
+        assert s.vms == ("db1",)
+
+    def test_vms_accepted_directly(self) -> None:
+        s = Step(fault="vm.pause", vms=("db1", "db2"))
+        assert s.vms == ("db1", "db2")
+        assert s.vm == ""
+
+    def test_both_vm_and_vms_raises(self) -> None:
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            Step(fault="vm.pause", vm="db1", vms=("db2",))
+
+    def test_neither_vm_nor_vms_raises(self) -> None:
+        with pytest.raises(ValueError, match="required"):
+            Step(fault="vm.pause")
+
+    def test_parallel_default_false(self) -> None:
+        s = Step(fault="vm.pause", vm="db1")
+        assert s.parallel is False
+
+    def test_parallel_set_true(self) -> None:
+        s = Step(fault="vm.pause", vm="db1", parallel=True)
+        assert s.parallel is True

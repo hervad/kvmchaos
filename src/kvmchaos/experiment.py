@@ -38,7 +38,9 @@ class Step:
     """One step in an experiment. Mirrors ``kvmchaos inject`` CLI flags."""
 
     fault: str
-    vm: str
+    vm: str = ""
+    vms: tuple[str, ...] = field(default_factory=tuple)
+    parallel: bool = False
     duration: int = 20
     bandwidth: int = 1
     size: int = 1024
@@ -47,6 +49,15 @@ class Step:
     corrupt: int = 1
     skew: int = 3600
     continue_on_failure: bool = False
+
+    def __post_init__(self) -> None:
+        """Normalise vm/vms and validate mutual exclusivity."""
+        if self.vm and self.vms:
+            raise ValueError("Step: 'vm' and 'vms' are mutually exclusive")
+        if not self.vm and not self.vms:
+            raise ValueError("Step: one of 'vm' or 'vms' is required")
+        if self.vm:
+            object.__setattr__(self, "vms", (self.vm,))
 
 
 @dataclass(frozen=True)
