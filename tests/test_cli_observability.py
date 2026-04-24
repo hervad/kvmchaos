@@ -180,5 +180,5 @@ def test_json_log_unwritable_path_fails_fast(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 2, result.output
-    assert "--json-log" in result.output or "json-log" in result.output
-    assert str(bad_path) in result.output
+    assert "--json-log" in result.stderr or "json-log" in result.stderr
+    assert str(bad_path) in result.stderr
