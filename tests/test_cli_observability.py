@@ -162,3 +162,23 @@ def test_json_log_flag_writes_pure_jsonl(captured_notifier: MagicMock, tmp_path:
     # Every line must be strictly valid JSON.
     for line in lines:
         _json.loads(line)
+
+
+def test_json_log_unwritable_path_fails_fast(tmp_path: Path) -> None:
+    """An unwritable --json-log target exits with code 2 and a clear message."""
+    missing_dir = tmp_path / "does" / "not" / "exist"
+    bad_path = missing_dir / "events.jsonl"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "--connect",
+            "test:///default",
+            "--json-log",
+            str(bad_path),
+            "list-vms",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "--json-log" in result.output or "json-log" in result.output
+    assert str(bad_path) in result.output

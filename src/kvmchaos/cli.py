@@ -110,7 +110,14 @@ def _root(
     """
     ctx.ensure_object(dict)
     ctx.obj[_CTX_KEY] = connect_uri
-    obs_logging.configure_stderr_logging(verbose=verbose, json_log_path=json_log)
+    try:
+        obs_logging.configure_stderr_logging(verbose=verbose, json_log_path=json_log)
+    except OSError as exc:
+        typer.echo(
+            f"error: cannot open --json-log target {json_log}: {exc}",
+            err=True,
+        )
+        raise typer.Exit(code=2) from exc
     cfg = load_config(None)
     _obs_set_notifier(Notifier(cfg.notifier))
 
