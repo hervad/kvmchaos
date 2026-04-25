@@ -1,8 +1,8 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-25 (morning — v0.18.0 lab validated on RHEL 9)
-**Status:** v0.18.0 complete. RPM installs on RHEL 9 with no Python dependency.
-424 tests, 95% coverage, ruff clean. No open work items.
+**Saved:** 2026-04-25 (v0.19.1 lab validated on Fedora 43 KVM)
+**Status:** v0.19.1 complete. Multi-VM concurrency shipped + idempotent revert fix.
+445 tests, 95% coverage, ruff clean. No open work items.
 
 ## What's done
 
@@ -129,10 +129,10 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## Repo state
 
-- `main` HEAD: `52a359e` (fix: warn when lone parallel=true step downgrades to sequential, add test).
-- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`), `v0.19.0` (`52a359e`).
+- `main` HEAD: `995b512` (fix: make vm.pause revert idempotent under concurrent fan-out).
+- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`), `v0.19.0` (`52a359e`), `v0.19.1` (`995b512`).
 - GitHub remote: `https://github.com/hermanvadym/kvmchaos` (private).
-- Tests: 442 passing, 95% coverage, ruff clean, format clean.
+- Tests: 445 passing, 95% coverage, ruff clean, format clean.
 
 ## Known follow-ups
 
@@ -163,56 +163,6 @@ Key changes:
 - `except BaseException` (not `Exception`) so `typer.Exit` controlled-stops report `"partial"` not `"error"`
 
 ## What's next
-
-### v0.19 lab validation (next session — do this first)
-
-Target host: RHEL 9, `qemu:///system`, VM `server1` (192.168.122.95).
-Run from the kvmchaos dev machine with the RPM **or** `uv run kvmchaos`.
-
-**Run 1 — fan-out smoke test**
-
-```toml
-# /tmp/test-fanout.toml
-name = "v0.19-fanout-lab"
-[[step]]
-fault = "vm.pause"
-vms = ["server1"]
-duration = 3
-```
-
-```bash
-kvmchaos --connect qemu:///system run --yes --force /tmp/test-fanout.toml
-```
-
-Expected: exit 0, output shows `step 1/1: vm.pause on server1`, `Experiment complete`.
-JSON events should carry `vms = ["server1"]` in the `inject.start` event.
-
-**Run 2 — parallel batch smoke test**
-
-```toml
-# /tmp/test-parallel.toml
-name = "v0.19-parallel-lab"
-[[step]]
-fault = "vm.pause"
-vm = "server1"
-duration = 3
-parallel = true
-[[step]]
-fault = "vm.pause"
-vm = "server1"
-duration = 3
-parallel = true
-```
-
-```bash
-kvmchaos --connect qemu:///system run --yes --force /tmp/test-parallel.toml
-```
-
-Expected: exit 0, output shows `parallel batch 1–2/2`, `Experiment complete`.
-Wall time should be ~3s not ~6s (confirms concurrency).
-
-Pass criteria: both runs exit 0, no unexpected stderr, events well-formed.
-Update RESUME.md with results and tag `v0.19.0` on the GitHub remote if passing.
 
 ### Phase 6 remaining
 
