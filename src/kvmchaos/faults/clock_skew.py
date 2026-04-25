@@ -32,7 +32,6 @@ class ClockSkewFault:
         f"Shift guest clock by {_DEFAULT_SKEW}s via QEMU guest agent setTime."
     )
     destructive: ClassVar[bool] = False
-    local_only: ClassVar[bool] = False
 
     def __init__(self, skew_seconds: int = _DEFAULT_SKEW) -> None:
         """Initialise with a clock offset.

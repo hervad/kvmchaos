@@ -46,9 +46,6 @@ class TestDiskFillMetadata:
     def test_non_destructive(self):
         assert DiskFillFault.destructive is False
 
-    def test_local_only(self):
-        assert DiskFillFault.local_only is True
-
     def test_default_fill_bytes(self):
         fault = DiskFillFault()
         assert fault.fill_bytes == 1_073_741_824  # 1 GiB

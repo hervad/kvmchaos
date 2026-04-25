@@ -30,7 +30,6 @@ class NetBandwidthFault:
         f"Cap first vNIC throughput to {_DEFAULT_RATE_KBPS}kbps via tc netem rate."
     )
     destructive: ClassVar[bool] = False
-    local_only: ClassVar[bool] = True
 
     def __init__(self, rate_kbps: int = _DEFAULT_RATE_KBPS) -> None:
         """Initialise with a bandwidth cap.

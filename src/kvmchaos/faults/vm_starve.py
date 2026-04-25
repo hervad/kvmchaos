@@ -29,7 +29,6 @@ class VmStarveFault:
     name: ClassVar[str] = "vm.starve"
     description: ClassVar[str] = "Balloon memory to 25% of max; guest swaps heavily."
     destructive: ClassVar[bool] = False
-    local_only: ClassVar[bool] = False
 
     def inject(self, domain: libvirt.virDomain) -> None:
         """Balloon domain memory to 25% of its configured maximum.

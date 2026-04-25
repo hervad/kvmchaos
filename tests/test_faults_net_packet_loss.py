@@ -48,9 +48,6 @@ class TestNetPacketLossMetadata:
     def test_non_destructive(self):
         assert NetPacketLossFault.destructive is False
 
-    def test_local_only(self):
-        assert NetPacketLossFault.local_only is True
-
     def test_default_loss_percent(self):
         assert NetPacketLossFault().loss_percent == 10
 

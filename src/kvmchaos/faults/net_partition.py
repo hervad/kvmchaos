@@ -26,7 +26,6 @@ class NetPartitionFault:
     name: ClassVar[str] = "net.partition"
     description: ClassVar[str] = "Drop all traffic on first vNIC via tc netem 100% loss."
     destructive: ClassVar[bool] = False
-    local_only: ClassVar[bool] = True
 
     def inject(self, domain: libvirt.virDomain) -> None:
         """Set 100% packet loss on the domain's first tap device.

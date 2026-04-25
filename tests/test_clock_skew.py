@@ -29,9 +29,6 @@ class TestClockSkewMetadata:
     def test_non_destructive(self):
         assert ClockSkewFault.destructive is False
 
-    def test_not_local_only(self):
-        assert ClockSkewFault.local_only is False
-
     def test_default_skew(self):
         assert ClockSkewFault().skew_seconds == 3600
 

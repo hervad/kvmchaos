@@ -30,7 +30,6 @@ class NetCorruptFault:
         f"Corrupt {_DEFAULT_CORRUPT_PERCENT}% of packets on first vNIC via tc netem corrupt."
     )
     destructive: ClassVar[bool] = False
-    local_only: ClassVar[bool] = True
 
     def __init__(self, corrupt_percent: int = _DEFAULT_CORRUPT_PERCENT) -> None:
         """Initialise with a corruption percentage.

@@ -48,9 +48,6 @@ class TestNetBandwidthMetadata:
     def test_non_destructive(self):
         assert NetBandwidthFault.destructive is False
 
-    def test_local_only(self):
-        assert NetBandwidthFault.local_only is True
-
     def test_default_rate_kbps(self):
         assert NetBandwidthFault().rate_kbps == 1000
 

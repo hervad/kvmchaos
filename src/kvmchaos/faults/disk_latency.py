@@ -28,7 +28,6 @@ class DiskLatencyFault:
     name: ClassVar[str] = "disk.latency"
     description: ClassVar[str] = "Throttle VM disk I/O to N MB/s via cgroup v2 io.max."
     destructive: ClassVar[bool] = False
-    local_only: ClassVar[bool] = True
 
     def __init__(self, bandwidth_bps: int = 1_000_000) -> None:
         """Initialise with a bandwidth limit.

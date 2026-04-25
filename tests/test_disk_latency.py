@@ -42,9 +42,6 @@ class TestDiskLatencyMetadata:
     def test_non_destructive(self):
         assert DiskLatencyFault.destructive is False
 
-    def test_local_only(self):
-        assert DiskLatencyFault.local_only is True
-
     def test_default_bandwidth(self):
         fault = DiskLatencyFault()
         assert fault.bandwidth_bps == 1_000_000

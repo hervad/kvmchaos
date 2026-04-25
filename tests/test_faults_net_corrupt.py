@@ -48,9 +48,6 @@ class TestNetCorruptMetadata:
     def test_non_destructive(self):
         assert NetCorruptFault.destructive is False
 
-    def test_local_only(self):
-        assert NetCorruptFault.local_only is True
-
     def test_default_corrupt_percent(self):
         assert NetCorruptFault().corrupt_percent == 1
 

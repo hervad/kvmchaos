@@ -31,7 +31,6 @@ class DiskFillFault:
     name: ClassVar[str] = "disk.fill"
     description: ClassVar[str] = "Fill host disk near VM image to trigger guest ENOSPC."
     destructive: ClassVar[bool] = False
-    local_only: ClassVar[bool] = True
 
     def __init__(self, fill_bytes: int = 1_073_741_824) -> None:
         """Initialise with a fill size.

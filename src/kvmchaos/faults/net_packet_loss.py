@@ -29,7 +29,6 @@ class NetPacketLossFault:
         f"Drop {_DEFAULT_LOSS_PERCENT}% of packets on first vNIC via tc netem."
     )
     destructive: ClassVar[bool] = False
-    local_only: ClassVar[bool] = True
 
     def __init__(self, loss_percent: int = _DEFAULT_LOSS_PERCENT) -> None:
         """Initialise with a packet-loss percentage.

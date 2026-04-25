@@ -48,9 +48,6 @@ class TestNetPartitionMetadata:
     def test_non_destructive(self):
         assert NetPartitionFault.destructive is False
 
-    def test_local_only(self):
-        assert NetPartitionFault.local_only is True
-
 
 class TestNetPartitionHappyPath:
     def test_inject_runs_tc_netem_loss_100_percent(self):

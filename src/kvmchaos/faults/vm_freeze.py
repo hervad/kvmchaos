@@ -26,7 +26,6 @@ class VmFreezeFault:
     name: ClassVar[str] = "vm.freeze"
     description: ClassVar[str] = "Hard-cap vCPU quota to 5%; guest crawls regardless of host load."
     destructive: ClassVar[bool] = False
-    local_only: ClassVar[bool] = False
 
     def __init__(self) -> None:
         """Initialise with no saved quota."""

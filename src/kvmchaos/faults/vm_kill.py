@@ -23,7 +23,6 @@ class VmKillFault:
     name: ClassVar[str] = "vm.kill"
     description: ClassVar[str] = "Graceful destroy then restart. Unsaved state lost."
     destructive: ClassVar[bool] = True
-    local_only: ClassVar[bool] = False
 
     def inject(self, domain: libvirt.virDomain) -> None:
         """Destroy the domain using graceful-first termination.
