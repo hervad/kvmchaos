@@ -239,6 +239,9 @@ Findings from production readiness audit (2026-04-23). Prioritised for RHEL 9 pr
 | 2026-04-20 | Event log: JSONL, stdlib logging only.                     | Greppable, jq-parseable, zero deps.                         |
 | 2026-04-20 | Primary test backend: `test:///default`.                   | Real `virDomain` objects without root or qemu.              |
 | 2026-04-20 | Coding style C: docstrings everywhere, comments only why.  | Self-teaching artifact without WHAT-narration noise.        |
+| 2026-04-25 | Scope: **kvmchaos must run on the hypervisor host**. SSH (`qemu+ssh://`) support removed in v0.20.0. | The half-support since v0.3 was dishonest: `vm.*`/`clock.skew` worked over SSH but `net.*`/`disk.*` rejected it with "requires local execution". Lab validation of remote net/disk faults is impossible. Removing SSH eliminates `local_only` flags, `_is_remote()`, and the inconsistent UX. Agent-less stance preserved. |
+| 2026-04-25 | Prometheus / metrics endpoint stays out of scope.          | Operating model is interactive lab/prod-lab use, not cron/unattended. v0.16 rejection stands. Reopen only if usage shifts to scheduled/unattended. |
+| 2026-04-25 | `kvmchaos doctor` orphan-fault recovery: report-only default; `--auto-revert` opt-in. | Auto-revert can break operator-intended state (e.g. a manually paused VM); report-only is safe everywhere. |
 
 ## Revision Notes
 
