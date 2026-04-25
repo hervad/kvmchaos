@@ -488,12 +488,17 @@ def _record_id(runs_dir: Path, record: dict[str, object]) -> str:
     """Derive a record's on-disk id from its fields.
 
     Mirrors the filename scheme in :func:`kvmchaos.runrecord.write_run_record`
-    so callers can resolve the id back to a file without a second stat.
+    so callers can resolve the id back to a file without a second stat. In
+    the rare event of a microsecond-tie collision (two parallel-batch
+    workers write at the exact same microsecond), the second record on
+    disk carries a ``-{n}`` counter suffix that this function does not
+    reconstruct; ``resolve_id`` will then surface the tie as an ambiguous
+    prefix rather than silently picking one.
     """
     raw_ts = record.get("started_at", "")
     try:
         dt = datetime.fromisoformat(str(raw_ts)).astimezone(UTC)
-        compact = dt.strftime("%Y%m%dT%H%M%SZ")
+        compact = dt.strftime("%Y%m%dT%H%M%S%fZ")
     except (ValueError, TypeError):
         compact = str(raw_ts)
     fault_slug = str(record.get("fault", "")).replace(".", "-")
@@ -1065,6 +1070,12 @@ def _run_experiment_step_on_vm(
             )
             raise typer.Exit(code=2)
 
+        # One libvirt connection per worker: libvirt-python's virConnect is
+        # not safe to share across threads (the underlying virConnectPtr
+        # serialises calls but the Python wrapper does not), so each fan-out
+        # worker opens its own connection. Cheap on a local socket; if this
+        # ever proves expensive across many VMs, a thread-local pool keyed
+        # on URI is the right next step.
         with connect(resolved_uri) as conn:
             try:
                 domain = conn.lookupByName(vm_name)
@@ -1317,8 +1328,10 @@ def _write_and_print_record(
     else:
         outcome = "success"
     record: dict[str, object] = {
-        "started_at": started_at.isoformat(timespec="seconds"),
-        "ended_at": ended_at.isoformat(timespec="seconds"),
+        # Microsecond precision is required for the runrecord filename to
+        # be unique under v0.19+ parallel-batch fan-out (see runrecord.py).
+        "started_at": started_at.isoformat(timespec="microseconds"),
+        "ended_at": ended_at.isoformat(timespec="microseconds"),
         "fault": fault_name,
         "vm": vm,
         "uri": uri,

@@ -149,9 +149,19 @@ def resolve_id(runs_dir: Path, id_or_prefix: str) -> Path:
 def write_run_record(record: dict[str, object], runs_dir: Path) -> Path:
     """Serialise a run record to a timestamped JSON file.
 
-    File name format: ``{compact_ts}-{fault_slug}-{vm}.json``.
+    File name format: ``{compact_ts}-{fault_slug}-{vm}.json``, where
+    ``compact_ts`` is microsecond-precision (``%Y%m%dT%H%M%S%fZ``). On the
+    rare event that the chosen path already exists (e.g. two parallel-batch
+    workers capture the same microsecond), a ``-{n}`` counter suffix is
+    appended until a free name is found — this preserves audit-trail
+    integrity under v0.19+ fan-out and parallel batches.
+
     Dots in fault names are replaced with hyphens (e.g. ``vm.freeze`` →
     ``vm-freeze``) to avoid ambiguous file extensions.
+
+    Contents are durably persisted: the temp file is fsync'd before the
+    atomic ``os.replace`` so a host crash mid-experiment cannot leave an
+    empty record on disk.
 
     Args:
         record: Run record dict. Must include ``started_at``, ``fault``, ``vm``.
@@ -162,14 +172,20 @@ def write_run_record(record: dict[str, object], runs_dir: Path) -> Path:
     """
     runs_dir.mkdir(parents=True, exist_ok=True)
     dt = datetime.fromisoformat(str(record["started_at"])).astimezone(UTC)
-    compact = dt.strftime("%Y%m%dT%H%M%SZ")
+    compact = dt.strftime("%Y%m%dT%H%M%S%fZ")
     fault_slug = str(record["fault"]).replace(".", "-")
-    filename = f"{compact}-{fault_slug}-{record['vm']}.json"
-    path = runs_dir / filename
+    base = f"{compact}-{fault_slug}-{record['vm']}"
+    path = runs_dir / f"{base}.json"
+    counter = 1
+    while path.exists():
+        path = runs_dir / f"{base}-{counter}.json"
+        counter += 1
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=runs_dir, suffix=".tmp", delete=False
     ) as fh:
         fh.write(json.dumps(record, indent=2))
+        fh.flush()
+        os.fsync(fh.fileno())
         tmp_path = Path(fh.name)
     os.replace(tmp_path, path)
     return path

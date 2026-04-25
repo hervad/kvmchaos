@@ -132,6 +132,8 @@ def _fmt_ts(iso: str) -> str:
     """Re-format a UTC ISO 8601 timestamp for readability.
 
     ``2026-04-22T22:03:14+00:00`` becomes ``2026-04-22 | 22:03:14 UTC``.
+    Microsecond fractions (``2026-04-22T22:03:14.123456+00:00``) are
+    stripped — the audit trail keeps them, but the human display does not.
     Non-UTC or non-conforming strings pass through unchanged.
     """
     if not iso.endswith("+00:00"):
@@ -140,6 +142,7 @@ def _fmt_ts(iso: str) -> str:
     date_part, _, time_part = naive.partition("T")
     if not time_part:
         return iso
+    time_part = time_part.partition(".")[0]
     return f"{date_part} | {time_part} UTC"
 
 

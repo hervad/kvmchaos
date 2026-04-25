@@ -192,3 +192,12 @@ class TestDisplay:
         from kvmchaos.report import _display
 
         assert _display("started_at", "2026-04-22T22:03:14+02:00") == "2026-04-22T22:03:14+02:00"
+
+    def test_strips_microseconds_from_started_at(self) -> None:
+        """Microsecond fractions (added in v0.19.2) are dropped for display."""
+        from kvmchaos.report import _display
+
+        assert (
+            _display("started_at", "2026-04-22T22:03:14.123456+00:00")
+            == "2026-04-22 | 22:03:14 UTC"
+        )

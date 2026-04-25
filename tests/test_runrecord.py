@@ -72,7 +72,8 @@ class TestWriteRunRecord:
 
     def test_filename_format(self, tmp_path: Path) -> None:
         path = write_run_record(_SAMPLE, tmp_path)
-        assert path.name == "20260422T163000Z-vm-freeze-server1.json"
+        # Microsecond-precision timestamp; _SAMPLE has us=0 so digits are zeroes.
+        assert path.name == "20260422T163000000000Z-vm-freeze-server1.json"
 
     def test_dot_to_hyphen_in_fault_name(self, tmp_path: Path) -> None:
         record = {**_SAMPLE, "fault": "net.latency", "vm": "server2"}
@@ -92,3 +93,31 @@ class TestWriteRunRecord:
         path = write_run_record(_SAMPLE, tmp_path)
         assert path.exists()
         assert path.suffix == ".json"
+
+    def test_collision_appends_counter_suffix(self, tmp_path: Path) -> None:
+        """Two records with identical started_at/fault/vm both persist.
+
+        Regression test for v0.19 parallel-batch filename collision: prior to
+        v0.19.2 the second writer silently overwrote the first via os.replace.
+        """
+        first = write_run_record(_SAMPLE, tmp_path)
+        second = write_run_record(_SAMPLE, tmp_path)
+        third = write_run_record(_SAMPLE, tmp_path)
+        assert first.exists()
+        assert second.exists()
+        assert third.exists()
+        assert first != second != third
+        assert first.name == "20260422T163000000000Z-vm-freeze-server1.json"
+        assert second.name == "20260422T163000000000Z-vm-freeze-server1-1.json"
+        assert third.name == "20260422T163000000000Z-vm-freeze-server1-2.json"
+
+    def test_fsync_called_for_durability(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Record is fsync'd before the atomic rename."""
+        from unittest.mock import MagicMock
+
+        fsync_mock = MagicMock()
+        monkeypatch.setattr("kvmchaos.runrecord.os.fsync", fsync_mock)
+        write_run_record(_SAMPLE, tmp_path)
+        assert fsync_mock.called
