@@ -56,6 +56,14 @@ class VmPauseFault:
             domain: A live libvirt domain handle.
 
         Raises:
-            libvirt.libvirtError: If the resume call fails.
+            libvirt.libvirtError: If the resume call fails for a reason other
+                than the domain already being in the running state.
         """
-        domain.resume()
+        try:
+            domain.resume()
+        except libvirt.libvirtError:
+            # Idempotent: if the domain is already running (e.g. a sibling
+            # thread's revert beat us to it), the desired end-state is met.
+            if domain.state()[0] == libvirt.VIR_DOMAIN_RUNNING:
+                return
+            raise

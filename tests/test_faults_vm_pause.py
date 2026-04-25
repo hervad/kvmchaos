@@ -48,3 +48,16 @@ class TestVmPauseErrors:
         domain.suspend.side_effect = libvirt.libvirtError("boom")
         with pytest.raises(libvirt.libvirtError):
             VmPauseFault().inject(domain)
+
+    def test_revert_idempotent_when_already_running(self):
+        domain = MagicMock(spec=libvirt.virDomain)
+        domain.resume.side_effect = libvirt.libvirtError("already running")
+        domain.state.return_value = (libvirt.VIR_DOMAIN_RUNNING, 0)
+        VmPauseFault().revert(domain)  # must not raise
+
+    def test_revert_propagates_unexpected_libvirt_error(self):
+        domain = MagicMock(spec=libvirt.virDomain)
+        domain.resume.side_effect = libvirt.libvirtError("unexpected")
+        domain.state.return_value = (libvirt.VIR_DOMAIN_PAUSED, 0)
+        with pytest.raises(libvirt.libvirtError):
+            VmPauseFault().revert(domain)
