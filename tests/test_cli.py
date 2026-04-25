@@ -785,6 +785,146 @@ class TestAbortAll:
         assert "Aborted" in result.output
 
 
+class TestRunCmd:
+    def test_step_outcome_failure_returned_not_raised(self, tmp_path, monkeypatch) -> None:
+        """_run_experiment_step_on_vm returns _StepOutcome(success=False) instead of raising."""
+        from kvmchaos.cli import _run_experiment_step_on_vm, _StepOutcome
+        from kvmchaos.experiment import Step
+
+        step = Step(fault="vm.pause", vm="missing-vm")
+        outcome = _run_experiment_step_on_vm(
+            step,
+            "missing-vm",
+            resolved_uri="test:///default",
+            dry_run=False,
+            config_path=None,
+            force=True,
+        )
+        assert isinstance(outcome, _StepOutcome)
+        assert outcome.success is False
+        assert outcome.vm == "missing-vm"
+
+    def test_fan_out_calls_all_vms(self, tmp_path, monkeypatch) -> None:
+        """_run_experiment_step calls _run_experiment_step_on_vm for each VM in step.vms."""
+        import kvmchaos.cli as cli_mod
+        from kvmchaos.cli import _run_experiment_step, _StepOutcome
+        from kvmchaos.experiment import Step
+
+        called: list[str] = []
+
+        def fake_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+            called.append(vm_name)
+            return _StepOutcome(vm=vm_name, success=True)
+
+        monkeypatch.setattr(cli_mod, "_run_experiment_step_on_vm", fake_on_vm)
+
+        step = Step(fault="vm.pause", vms=("db1", "db2"))
+        outcomes = _run_experiment_step(
+            step,
+            resolved_uri="test:///default",
+            dry_run=False,
+            config_path=None,
+            force=True,
+        )
+        assert sorted(called) == ["db1", "db2"]
+        assert len(outcomes) == 2
+        assert all(o.success for o in outcomes)
+
+    def test_fan_out_complete_then_report(self, tmp_path, monkeypatch) -> None:
+        """All VMs run even when one fails (complete-then-report)."""
+        import kvmchaos.cli as cli_mod
+        from kvmchaos.cli import _run_experiment_step, _StepOutcome
+        from kvmchaos.experiment import Step
+
+        called: list[str] = []
+
+        def fake_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+            called.append(vm_name)
+            success = vm_name != "bad"
+            return _StepOutcome(vm=vm_name, success=success, exit_code=0 if success else 1)
+
+        monkeypatch.setattr(cli_mod, "_run_experiment_step_on_vm", fake_on_vm)
+
+        step = Step(fault="vm.pause", vms=("good", "bad"))
+        outcomes = _run_experiment_step(
+            step,
+            resolved_uri="test:///default",
+            dry_run=False,
+            config_path=None,
+            force=True,
+        )
+        assert sorted(called) == ["bad", "good"]  # both ran
+        assert sum(1 for o in outcomes if not o.success) == 1
+        assert sum(1 for o in outcomes if o.success) == 1
+
+    def test_collect_parallel_batch_contiguous(self) -> None:
+        from kvmchaos.cli import _collect_parallel_batch
+        from kvmchaos.experiment import Step
+
+        steps = [
+            Step(fault="vm.pause", vm="a", parallel=True),
+            Step(fault="vm.pause", vm="b", parallel=True),
+            Step(fault="vm.pause", vm="c"),  # not parallel
+        ]
+        batch = _collect_parallel_batch(steps, 0)
+        assert [idx for idx, _ in batch] == [0, 1]
+
+    def test_collect_parallel_batch_not_parallel(self) -> None:
+        from kvmchaos.cli import _collect_parallel_batch
+        from kvmchaos.experiment import Step
+
+        steps = [Step(fault="vm.pause", vm="a")]
+        batch = _collect_parallel_batch(steps, 0)
+        assert batch == []
+
+    def test_parallel_batch_runs_concurrently(self, tmp_path, monkeypatch) -> None:
+        """Two parallel=true steps complete in ~half the time of sequential."""
+        import time as time_mod
+
+        import kvmchaos.cli as cli_mod
+        from kvmchaos.cli import _StepOutcome
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        def slow_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+            time_mod.sleep(0.08)
+            return _StepOutcome(vm=vm_name, success=True)
+
+        monkeypatch.setattr(cli_mod, "_run_experiment_step_on_vm", slow_on_vm)
+
+        path = tmp_path / "e.toml"
+        path.write_text(
+            'name = "par"\n\n'
+            '[[step]]\nfault = "vm.pause"\nvm = "test"\nduration = 0\nparallel = true\n\n'
+            '[[step]]\nfault = "vm.pause"\nvm = "test"\nduration = 0\nparallel = true\n'
+        )
+        t0 = time_mod.monotonic()
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "run", "--yes", "--force", str(path)],
+        )
+        elapsed = time_mod.monotonic() - t0
+
+        assert result.exit_code == 0, result.output
+        # Sequential would take 2 * 0.08 = 0.16s; parallel should finish in ~0.08s
+        assert elapsed < 0.14
+
+    def test_vms_fanout_via_run_command(self, tmp_path, monkeypatch) -> None:
+        """vms = [...] in TOML runs the step on all listed VMs."""
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        path = tmp_path / "e.toml"
+        # test:///default only has "test" domain; use --force and a single-VM vms list
+        path.write_text(
+            'name = "fanout"\n\n[[step]]\nfault = "vm.pause"\nvms = ["test"]\nduration = 0\n'
+        )
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "run", "--yes", "--force", str(path)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Experiment complete" in result.output
+
+
 class TestRunExperiment:
     def test_missing_file_exits_2(self, tmp_path) -> None:
         result = runner.invoke(app, ["run", str(tmp_path / "nope.toml")])

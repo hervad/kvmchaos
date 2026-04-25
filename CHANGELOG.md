@@ -6,6 +6,18 @@ All notable changes to kvmchaos. Format loosely follows
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-04-25
+
+### Added
+- `vms` list field on experiment steps for fan-out: inject the same fault
+  on multiple VMs simultaneously (`vms = ["db1", "db2"]`).
+- `parallel` flag on experiment steps: consecutive `parallel = true` steps
+  execute as a batch using `ThreadPoolExecutor`.
+- `_StepOutcome` internal dataclass; runner loop processes outcome lists
+  instead of catching `typer.Exit` from `_run_experiment_step`.
+- `experiment.parallel_batch` DEBUG observability event emitted when a
+  parallel batch starts.
+
 ## [0.18.0] — TBD
 
 ### Added

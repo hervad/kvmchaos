@@ -14,6 +14,7 @@ REVERT_SUCCESS = "revert.success"
 REVERT_ERROR = "revert.error"
 EXPERIMENT_START = "experiment.start"
 EXPERIMENT_END = "experiment.end"
+EXPERIMENT_PARALLEL_BATCH = "experiment.parallel_batch"
 
 
 def _kvmchaos_version() -> str:

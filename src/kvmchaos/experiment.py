@@ -38,7 +38,9 @@ class Step:
     """One step in an experiment. Mirrors ``kvmchaos inject`` CLI flags."""
 
     fault: str
-    vm: str
+    vm: str = ""
+    vms: tuple[str, ...] = field(default_factory=tuple)
+    parallel: bool = False
     duration: int = 20
     bandwidth: int = 1
     size: int = 1024
@@ -47,6 +49,15 @@ class Step:
     corrupt: int = 1
     skew: int = 3600
     continue_on_failure: bool = False
+
+    def __post_init__(self) -> None:
+        """Normalise vm/vms and validate mutual exclusivity."""
+        if self.vm and self.vms:
+            raise ValueError("Step: 'vm' and 'vms' are mutually exclusive")
+        if not self.vm and not self.vms:
+            raise ValueError("Step: one of 'vm' or 'vms' is required")
+        if self.vm:
+            object.__setattr__(self, "vms", (self.vm,))
 
 
 @dataclass(frozen=True)
@@ -90,12 +101,20 @@ def load_experiment(path: Path) -> Experiment:
             raise ValueError(f"experiment {path}: step {i} is not a table")
         if "fault" not in raw:
             raise ValueError(f"experiment {path}: step {i} missing 'fault'")
-        if "vm" not in raw:
-            raise ValueError(f"experiment {path}: step {i} missing 'vm'")
+        has_vm = "vm" in raw
+        has_vms = "vms" in raw
+        if not has_vm and not has_vms:
+            raise ValueError(f"experiment {path}: step {i} missing 'vm' or 'vms'")
+        if has_vm and has_vms:
+            raise ValueError(f"experiment {path}: step {i}: 'vm' and 'vms' are mutually exclusive")
+        vm = str(raw["vm"]) if has_vm else ""
+        vms = tuple(str(v) for v in raw.get("vms", []))
         steps.append(
             Step(
                 fault=str(raw["fault"]),
-                vm=str(raw["vm"]),
+                vm=vm,
+                vms=vms,
+                parallel=bool(raw.get("parallel", False)),
                 duration=int(raw.get("duration", 20)),
                 bandwidth=int(raw.get("bandwidth", 1)),
                 size=int(raw.get("size", 1024)),

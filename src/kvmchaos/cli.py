@@ -11,11 +11,14 @@ fault logic lives in `kvmchaos.faults`.
 
 from __future__ import annotations
 
+import functools
 import json
 import signal
 import time
 import urllib.parse
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass as _dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -60,6 +63,15 @@ app = typer.Typer(
 _CTX_KEY = "connect_uri"
 
 _DEFAULT_REPORT_PATH = Path("kvmchaos-report.html")
+
+
+@_dataclass
+class _StepOutcome:
+    """Result of executing a single experiment step on one VM."""
+
+    vm: str
+    success: bool
+    exit_code: int = 0
 
 
 def _version_callback(value: bool) -> None:
@@ -783,6 +795,21 @@ def inject_cmd(
             raise typer.Exit(code=1)
 
 
+def _collect_parallel_batch(steps: list[Step], start: int) -> list[tuple[int, Step]]:
+    """Return contiguous (original_index, step) pairs starting at ``start`` while parallel=True.
+
+    Returns an empty list if ``steps[start].parallel`` is False. A single step with
+    ``parallel=True`` but no adjacent parallel neighbours returns a list of length 1;
+    the caller treats that the same as a non-parallel step (``len(batch) >= 2`` guard).
+    """
+    pairs: list[tuple[int, Step]] = []
+    j = start
+    while j < len(steps) and steps[j].parallel:
+        pairs.append((j, steps[j]))
+        j += 1
+    return pairs
+
+
 @app.command("run")
 def run_cmd(
     ctx: typer.Context,
@@ -843,7 +870,8 @@ def run_cmd(
     typer.echo(f"  {len(experiment.steps)} step(s), uri: {resolved_uri}")
     for i, step in enumerate(experiment.steps, start=1):
         marker = " [continue_on_failure]" if step.continue_on_failure else ""
-        typer.echo(f"  {i:>2}. {step.fault} on {step.vm} (duration={step.duration}s){marker}")
+        vm_label = "/".join(step.vms)
+        typer.echo(f"  {i:>2}. {step.fault} on {vm_label} (duration={step.duration}s){marker}")
 
     if not dry_run and not confirm("Run this experiment?", assume_yes=assume_yes):
         typer.echo("Aborted.")
@@ -858,30 +886,96 @@ def run_cmd(
     )
 
     failed_steps = 0
+    steps_list = list(experiment.steps)
+    n = len(steps_list)
+
+    # Defined once here (not inside the while loop) so the closure over the run_cmd
+    # parameters is stable and the function object is not recreated every iteration.
+    def _run_batch_step(idx_s: tuple[int, Step]) -> list[_StepOutcome]:
+        return _run_experiment_step(
+            idx_s[1],
+            resolved_uri=resolved_uri,
+            dry_run=dry_run,
+            config_path=config_path,
+            force=force,
+        )
+
     try:
-        for i, step in enumerate(experiment.steps, start=1):
-            typer.echo(f"\n--- step {i}/{len(experiment.steps)}: {step.fault} on {step.vm} ---")
-            try:
-                _run_experiment_step(
+        i = 0
+        while i < n:
+            step = steps_list[i]
+            batch = _collect_parallel_batch(steps_list, i)
+
+            if len(batch) >= 2:
+                # Parallel batch: submit all steps concurrently, collect outcomes
+                batch_label = " + ".join(f"{s.fault}@{'/'.join(s.vms)}" for _, s in batch)
+                typer.echo(f"\n--- parallel batch {i + 1}-{i + len(batch)}/{n}: {batch_label} ---")
+                _obs_emit(
+                    obs_events.EXPERIMENT_PARALLEL_BATCH,
+                    step_count=len(batch),
+                    vms=[vm for _, s in batch for vm in s.vms],
+                )
+                max_workers = min(len(batch), 8)
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    batch_outcomes: list[list[_StepOutcome]] = list(
+                        pool.map(_run_batch_step, batch)
+                    )
+                should_stop = False
+                for k, (_, s) in enumerate(batch):
+                    step_num = i + k + 1
+                    step_outcomes = batch_outcomes[k]
+                    failed_here = [o for o in step_outcomes if not o.success]
+                    if failed_here:
+                        failed_steps += 1
+                        worst_code = max((o.exit_code for o in failed_here), default=1)
+                        if s.continue_on_failure:
+                            typer.echo(
+                                f"step {step_num} failed (exit {worst_code});"
+                                " continuing (continue_on_failure=true).",
+                                err=True,
+                            )
+                        else:
+                            typer.echo(
+                                f"step {step_num} failed (exit {worst_code}); stopping experiment.",
+                                err=True,
+                            )
+                            should_stop = True
+                if should_stop:
+                    raise typer.Exit(code=1)
+                i += len(batch)
+            else:
+                # Sequential step (single step, even if parallel=True but no neighbour)
+                vm_label = "/".join(step.vms)
+                typer.echo(f"\n--- step {i + 1}/{n}: {step.fault} on {vm_label} ---")
+                outcomes = _run_experiment_step(
                     step,
                     resolved_uri=resolved_uri,
                     dry_run=dry_run,
                     config_path=config_path,
                     force=force,
                 )
-            except typer.Exit as exc:
-                failed_steps += 1
-                code = exc.exit_code if isinstance(exc.exit_code, int) else 1
-                if step.continue_on_failure:
-                    typer.echo(
-                        f"step {i} failed (exit {code}); continuing (continue_on_failure=true).",
-                        err=True,
-                    )
-                    continue
-                typer.echo(f"step {i} failed (exit {code}); stopping experiment.", err=True)
-                raise typer.Exit(code=1) from exc
-    except Exception:
-        exp_status = "error"
+                failed_outcomes = [o for o in outcomes if not o.success]
+                if failed_outcomes:
+                    failed_steps += 1
+                    worst_code = max((o.exit_code for o in failed_outcomes), default=1)
+                    if step.continue_on_failure:
+                        typer.echo(
+                            f"step {i + 1} failed (exit {worst_code});"
+                            " continuing (continue_on_failure=true).",
+                            err=True,
+                        )
+                    else:
+                        typer.echo(
+                            f"step {i + 1} failed (exit {worst_code}); stopping experiment.",
+                            err=True,
+                        )
+                        raise typer.Exit(code=1)
+                i += 1
+    except BaseException as exc:
+        # typer.Exit is a controlled stop (e.g. step failure with continue_on_failure=False).
+        # Only mark "error" for unexpected exceptions; let the finally block resolve "partial".
+        if not isinstance(exc, typer.Exit):
+            exp_status = "error"
         raise
     finally:
         if exp_status == "ok" and failed_steps > 0:
@@ -899,6 +993,154 @@ def run_cmd(
     typer.echo("\nExperiment complete.")
 
 
+def _run_experiment_step_on_vm(
+    step: Step,
+    vm_name: str,
+    *,
+    resolved_uri: str,
+    dry_run: bool,
+    config_path: Path | None,
+    force: bool,
+) -> _StepOutcome:
+    """Execute a single experiment step on one VM.
+
+    Args:
+        step: Experiment step configuration.
+        vm_name: Target VM name (overrides step.vm for fan-out).
+        resolved_uri: Already-resolved libvirt URI.
+        dry_run: If True, print plan only.
+        config_path: Optional config file override.
+        force: If True, bypass safety checks.
+
+    Returns:
+        _StepOutcome with success=True on clean completion, False otherwise.
+    """
+    try:
+        if step.fault == "clock.skew" and step.skew == 0:
+            typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)
+            raise typer.Exit(code=2)
+
+        fault = _build_fault(
+            step.fault,
+            bandwidth=step.bandwidth,
+            size=step.size,
+            loss=step.loss,
+            rate=step.rate,
+            corrupt=step.corrupt,
+            skew=step.skew,
+        )
+
+        if not force:
+            try:
+                cfg = load_config(config_path)
+            except FileNotFoundError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=2) from exc
+            if not cfg.allowlist.is_allowed(vm_name):
+                typer.echo(
+                    f"VM {vm_name!r} is not in the allowlist. "
+                    "Add it to the config file or pass --force.",
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            if cfg.rate_limit.is_configured():
+                records = load_records(default_runs_dir())
+                violation = rate_limit_violation(
+                    cfg.rate_limit, records, is_destructive=fault.destructive
+                )
+                if violation is not None:
+                    typer.echo(f"{violation}. Wait and retry, or pass --force.", err=True)
+                    raise typer.Exit(code=2)
+
+        if fault.local_only and _is_remote(resolved_uri):
+            typer.echo(
+                f"{step.fault} requires local execution — run kvmchaos directly on the KVM host.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        with connect(resolved_uri) as conn:
+            try:
+                domain = conn.lookupByName(vm_name)
+            except libvirt.libvirtError as exc:
+                typer.echo(f"VM '{vm_name}' not found: {exc}", err=True)
+                raise typer.Exit(code=2) from exc
+
+            started_at = datetime.now(UTC)
+            steps_records: list[dict[str, object]] = []
+
+            inject_step = _run_step(
+                fault.inject,
+                domain,
+                action="inject",
+                fault_name=step.fault,
+                vm=vm_name,
+                dry_run=dry_run,
+            )
+            steps_records.append(inject_step)
+            if inject_step["result"] == "fail":
+                ended_at = datetime.now(UTC)
+                _write_and_print_record(
+                    step.fault, vm_name, resolved_uri, dry_run, started_at, ended_at, steps_records
+                )
+                raise typer.Exit(code=1)
+
+            verify_step = _run_step(
+                fault.verify,
+                domain,
+                action="verify",
+                fault_name=step.fault,
+                vm=vm_name,
+                dry_run=dry_run,
+            )
+            steps_records.append(verify_step)
+            if verify_step["result"] == "fail":
+                revert_step = _run_step(
+                    fault.revert,
+                    domain,
+                    action="revert",
+                    fault_name=step.fault,
+                    vm=vm_name,
+                    dry_run=dry_run,
+                )
+                steps_records.append(revert_step)
+                ended_at = datetime.now(UTC)
+                _write_and_print_record(
+                    step.fault, vm_name, resolved_uri, dry_run, started_at, ended_at, steps_records
+                )
+                raise typer.Exit(code=1)
+
+            if dry_run:
+                typer.echo(f"[dry-run] would: hold {step.fault} on {vm_name} for {step.duration}s")
+            else:
+                typer.echo(f"Holding '{step.fault}' on '{vm_name}' for {step.duration}s …")
+                try:
+                    time.sleep(step.duration)
+                except KeyboardInterrupt:
+                    typer.echo("Hold interrupted; reverting.", err=True)
+
+            revert_step = _run_step(
+                fault.revert,
+                domain,
+                action="revert",
+                fault_name=step.fault,
+                vm=vm_name,
+                dry_run=dry_run,
+            )
+            steps_records.append(revert_step)
+            ended_at = datetime.now(UTC)
+            _write_and_print_record(
+                step.fault, vm_name, resolved_uri, dry_run, started_at, ended_at, steps_records
+            )
+            if revert_step["result"] == "fail":
+                raise typer.Exit(code=1)
+
+        return _StepOutcome(vm=vm_name, success=True)
+    except typer.Exit as exc:
+        code = exc.exit_code if isinstance(exc.exit_code, int) else 1
+        return _StepOutcome(vm=vm_name, success=False, exit_code=code)
+
+
 def _run_experiment_step(
     step: Step,
     *,
@@ -906,142 +1148,30 @@ def _run_experiment_step(
     dry_run: bool,
     config_path: Path | None,
     force: bool,
-) -> None:
-    """Execute a single experiment step.
-
-    Duplicates the core inject orchestration from ``inject_cmd`` (URI
-    check, safety, connect, inject/verify/hold/revert, record writing).
-    Extraction into a single helper is future work; the duplication is
-    contained and mechanically obvious.
+) -> list[_StepOutcome]:
+    """Fan out step across all target VMs, executing in parallel.
 
     Args:
-        step: Experiment step to execute.
+        step: Experiment step with one or more target VMs in ``step.vms``.
         resolved_uri: Already-resolved libvirt URI.
         dry_run: If True, print plan only.
         config_path: Optional config file override.
         force: If True, bypass safety checks.
 
-    Raises:
-        typer.Exit: On any failure (propagated for experiment-level handling).
+    Returns:
+        One :class:`_StepOutcome` per VM in ``step.vms``.
     """
-    if step.fault == "clock.skew" and step.skew == 0:
-        typer.echo("--skew 0 is a no-op; provide a non-zero offset.", err=True)
-        raise typer.Exit(code=2)
-
-    fault = _build_fault(
-        step.fault,
-        bandwidth=step.bandwidth,
-        size=step.size,
-        loss=step.loss,
-        rate=step.rate,
-        corrupt=step.corrupt,
-        skew=step.skew,
+    max_workers = min(len(step.vms), 8)
+    worker = functools.partial(
+        _run_experiment_step_on_vm,
+        step,
+        resolved_uri=resolved_uri,
+        dry_run=dry_run,
+        config_path=config_path,
+        force=force,
     )
-
-    if not force:
-        try:
-            cfg = load_config(config_path)
-        except FileNotFoundError as exc:
-            typer.echo(str(exc), err=True)
-            raise typer.Exit(code=2) from exc
-        if not cfg.allowlist.is_allowed(step.vm):
-            typer.echo(
-                f"VM {step.vm!r} is not in the allowlist. "
-                "Add it to the config file or pass --force.",
-                err=True,
-            )
-            raise typer.Exit(code=2)
-        if cfg.rate_limit.is_configured():
-            records = load_records(default_runs_dir())
-            violation = rate_limit_violation(
-                cfg.rate_limit, records, is_destructive=fault.destructive
-            )
-            if violation is not None:
-                typer.echo(f"{violation}. Wait and retry, or pass --force.", err=True)
-                raise typer.Exit(code=2)
-
-    if fault.local_only and _is_remote(resolved_uri):
-        typer.echo(
-            f"{step.fault} requires local execution — run kvmchaos directly on the KVM host.",
-            err=True,
-        )
-        raise typer.Exit(code=2)
-
-    with connect(resolved_uri) as conn:
-        try:
-            domain = conn.lookupByName(step.vm)
-        except libvirt.libvirtError as exc:
-            typer.echo(f"VM '{step.vm}' not found: {exc}", err=True)
-            raise typer.Exit(code=2) from exc
-
-        started_at = datetime.now(UTC)
-        steps_records: list[dict[str, object]] = []
-
-        inject_step = _run_step(
-            fault.inject,
-            domain,
-            action="inject",
-            fault_name=step.fault,
-            vm=step.vm,
-            dry_run=dry_run,
-        )
-        steps_records.append(inject_step)
-        if inject_step["result"] == "fail":
-            ended_at = datetime.now(UTC)
-            _write_and_print_record(
-                step.fault, step.vm, resolved_uri, dry_run, started_at, ended_at, steps_records
-            )
-            raise typer.Exit(code=1)
-
-        verify_step = _run_step(
-            fault.verify,
-            domain,
-            action="verify",
-            fault_name=step.fault,
-            vm=step.vm,
-            dry_run=dry_run,
-        )
-        steps_records.append(verify_step)
-        if verify_step["result"] == "fail":
-            revert_step = _run_step(
-                fault.revert,
-                domain,
-                action="revert",
-                fault_name=step.fault,
-                vm=step.vm,
-                dry_run=dry_run,
-            )
-            steps_records.append(revert_step)
-            ended_at = datetime.now(UTC)
-            _write_and_print_record(
-                step.fault, step.vm, resolved_uri, dry_run, started_at, ended_at, steps_records
-            )
-            raise typer.Exit(code=1)
-
-        if dry_run:
-            typer.echo(f"[dry-run] would: hold {step.fault} on {step.vm} for {step.duration}s")
-        else:
-            typer.echo(f"Holding '{step.fault}' on '{step.vm}' for {step.duration}s …")
-            try:
-                time.sleep(step.duration)
-            except KeyboardInterrupt:
-                typer.echo("Hold interrupted; reverting.", err=True)
-
-        revert_step = _run_step(
-            fault.revert,
-            domain,
-            action="revert",
-            fault_name=step.fault,
-            vm=step.vm,
-            dry_run=dry_run,
-        )
-        steps_records.append(revert_step)
-        ended_at = datetime.now(UTC)
-        _write_and_print_record(
-            step.fault, step.vm, resolved_uri, dry_run, started_at, ended_at, steps_records
-        )
-        if revert_step["result"] == "fail":
-            raise typer.Exit(code=1)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        return list(pool.map(worker, step.vms))
 
 
 def _run_step(
