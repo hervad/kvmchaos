@@ -1,8 +1,8 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-25 (v0.19.2 lab validated on Fedora 43 KVM)
-**Status:** v0.19.2 complete. Run-record filename-collision fix + fsync; Py 3.12/3.13/3.14 classifiers.
-448 tests, 95% coverage, ruff clean. Scope tightened — v0.20 will remove SSH support.
+**Saved:** 2026-04-25 (v0.20 in progress — Tasks 1+2 of 8 complete)
+**Status:** v0.20 branch on `main`. SSH support removed, local_only attribute gone. 414 tests, 96% coverage, ruff clean.
+**Resume point:** Task 3 of 8 in `docs/superpowers/plans/2026-04-25-kvmchaos-v0.20-cleanup.md`.
 
 ## What's done
 
@@ -129,10 +129,11 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## Repo state
 
-- `main` HEAD: `eba583c` (docs: record v0.19.1 review, prod-tools gap analysis, scope decisions).
-- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`), `v0.19.0` (`52a359e`), `v0.19.1` (`995b512`), `v0.19.2` (`568681c`).
+- `main` HEAD: `fec1fc9` (feat!: remove qemu+ssh:// support).
+- Tags: `v0.16.0`–`v0.19.2` intact; v0.20.0 not yet tagged (in progress).
 - GitHub remote: `https://github.com/hermanvadym/kvmchaos` (private).
-- Tests: 448 passing, 95% coverage, ruff clean, format clean.
+- Tests: 414 passing, 96% coverage, ruff clean, format clean.
+  (test count dropped from 448: ~34 SSH/local_only tests deleted; coverage rose as dead guard code was removed)
 
 ## Known follow-ups
 
