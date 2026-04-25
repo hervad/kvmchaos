@@ -129,10 +129,10 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## Repo state
 
-- `main` HEAD: `b0f98e8` (packaging: drop bash completion from RPM).
-- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`).
+- `main` HEAD: `0623731` (feat: v0.19.0 multi-VM concurrency).
+- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`), `v0.19.0` (`0623731`).
 - GitHub remote: `https://github.com/hermanvadym/kvmchaos` (private).
-- Tests: 424 passing, 95% coverage, ruff clean, format clean.
+- Tests: 441 passing, 95% coverage, ruff clean, format clean.
 
 ## Known follow-ups
 
@@ -140,13 +140,31 @@ Resolves the v0.16 stderr mixed-stream follow-up.
   — the `--json-log` flag and libvirt error handler were implemented. The follow-up
   doc has been marked resolved.
 
+### v0.19.0 — Multi-VM Concurrency
+
+- **Spec:** `docs/superpowers/specs/2026-04-25-kvmchaos-v0.19-multi-vm-concurrency-design.md`
+- **Plan:** `docs/superpowers/plans/2026-04-25-kvmchaos-v0.19-multi-vm-concurrency.md`
+- **Merged to main:** `0623731`
+
+Two axes of parallelism, both via `ThreadPoolExecutor` (no new runtime deps):
+
+1. **Fan-out** — `vms = ["db1", "db2"]` in TOML runs one fault on N VMs simultaneously
+2. **Parallel batches** — consecutive `parallel = true` steps execute concurrently
+
+Key changes:
+- `Step` dataclass: `vm: str = ""` + `vms: tuple[str, ...]` + `parallel: bool`; `__post_init__` normalises `vm` → `vms`
+- `load_experiment`: accepts either `vm` or `vms` in TOML (backward-compatible)
+- `_StepOutcome(vm, success, exit_code)` — returned by all step runners (no raise)
+- `_run_experiment_step_on_vm` — single-VM executor, returns `_StepOutcome`
+- `_run_experiment_step` — fans out via `functools.partial` + `pool.map`
+- `_collect_parallel_batch` — collects contiguous `parallel=True` steps
+- `EXPERIMENT_PARALLEL_BATCH` observability event emitted at batch start
+- Runner loop: `while` with `_collect_parallel_batch`; batch ≥ 2 → concurrent, else sequential
+- `except BaseException` (not `Exception`) so `typer.Exit` controlled-stops report `"partial"` not `"error"`
+
 ## What's next
 
-- **v0.18 lab validation PASSED** on RHEL 9 (`server1`, 192.168.122.95):
-  `sudo rpm -i kvmchaos-0.18.0-1.el9.x86_64.rpm` installed cleanly,
-  `kvmchaos --version` returned `0.18.0`. No Python on host required.
-  Note: bash completion dropped (CLI has `add_completion=False`).
-- **Phase 6 — Multi-target / Cloud:** multi-VM concurrent experiments,
-  ssh-based remote executor, cloud provider backends (AWS/GCP). Needs design.
+- **v0.19 lab validation:** smoke-test `vms = [...]` and `parallel = true` on RHEL 9 KVM host
+- **Phase 6 remaining:** SSH-based remote executor, cloud provider backends (AWS/GCP). Needs design.
 
-Each is a focused 1-2 hour session (Phase 6 longer).
+Each is a focused 1-2 hour session.
