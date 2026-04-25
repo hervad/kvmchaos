@@ -129,10 +129,10 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## Repo state
 
-- `main` HEAD: `0623731` (feat: v0.19.0 multi-VM concurrency).
-- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`), `v0.19.0` (`0623731`).
+- `main` HEAD: `4c95d82` (fix: document KI-in-thread gap, add continue_on_failure parallel batch test).
+- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`), `v0.19.0` (`4c95d82`).
 - GitHub remote: `https://github.com/hermanvadym/kvmchaos` (private).
-- Tests: 441 passing, 95% coverage, ruff clean, format clean.
+- Tests: 442 passing, 95% coverage, ruff clean, format clean.
 
 ## Known follow-ups
 
