@@ -1,8 +1,8 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-25 (v0.19.1 lab validated on Fedora 43 KVM)
-**Status:** v0.19.1 complete. Multi-VM concurrency shipped + idempotent revert fix.
-445 tests, 95% coverage, ruff clean. No open work items.
+**Saved:** 2026-04-25 (v0.19.2 lab validated on Fedora 43 KVM)
+**Status:** v0.19.2 complete. Run-record filename-collision fix + fsync; Py 3.12/3.13/3.14 classifiers.
+448 tests, 95% coverage, ruff clean. Scope tightened — v0.20 will remove SSH support.
 
 ## What's done
 
@@ -129,10 +129,10 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## Repo state
 
-- `main` HEAD: `995b512` (fix: make vm.pause revert idempotent under concurrent fan-out).
-- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`), `v0.19.0` (`52a359e`), `v0.19.1` (`995b512`).
+- `main` HEAD: `eba583c` (docs: record v0.19.1 review, prod-tools gap analysis, scope decisions).
+- Tags: `v0.16.0` (`fbd2971`), `v0.17.0` (`323a2e8`), `v0.18.0` (`b0f98e8`), `v0.19.0` (`52a359e`), `v0.19.1` (`995b512`), `v0.19.2` (`568681c`).
 - GitHub remote: `https://github.com/hermanvadym/kvmchaos` (private).
-- Tests: 445 passing, 95% coverage, ruff clean, format clean.
+- Tests: 448 passing, 95% coverage, ruff clean, format clean.
 
 ## Known follow-ups
 
@@ -164,6 +164,31 @@ Key changes:
 
 ## What's next
 
-### Phase 6 remaining
+Per the v0.19.1 project review (`docs/superpowers/reviews/2026-04-25-v0.19-project-review.md`)
+and the resolved scope decisions in `PLAN.md`:
 
-SSH-based remote executor, cloud provider backends (AWS/GCP). Needs design session.
+### v0.20.0 — drop SSH + cooperative cancellation + experiment-runner extraction
+
+Breaking change: `qemu+ssh://` support is removed (see Decisions Log
+2026-04-25). Plus the H2/H3 latent bugs from the review:
+
+- Remove `local_only` ClassVar from every fault; remove `_is_remote()`,
+  remove SSH-related lab tests, document the breaking change in CHANGELOG.
+- H2: shared `threading.Event` for cooperative KeyboardInterrupt
+  propagation across fan-out workers.
+- H3: `disk.fill` inject cleanup on partial-fallocate failure.
+- M2: extract `_run_experiment_step_on_vm` / `_run_experiment_step` /
+  `_collect_parallel_batch` from `cli.py` into `experiment.py`; rename
+  `safety.py` → `prompts.py` (contents are just the `confirm` helper).
+- M3: `--max-workers` flag.
+- New: `kvmchaos doctor` orphan-fault scan (report-only default,
+  `--auto-revert` opt-in) — closes the crash-recovery gap.
+
+### v0.21.0 — production-credibility features
+
+Design session in Opus first:
+
+- Steady-state hypothesis / probe loop (Chaos Toolkit shape).
+- New fault types: `vm.cpu_stress`/`vm.mem_stress` (libvirt
+  setVcpus/setMemory), `vm.reset`/`vm.crash` (virDomain.reset/injectNMI),
+  `disk.detach`/`net.detach` (detachDeviceFlags).
