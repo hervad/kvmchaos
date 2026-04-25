@@ -902,24 +902,19 @@ def run_cmd(
                     vms=[vm for _, s in batch for vm in s.vms],
                 )
                 max_workers = min(len(batch), 8)
+
+                def _run_batch_step(idx_s: tuple[int, Step]) -> list[_StepOutcome]:
+                    return _run_experiment_step(
+                        idx_s[1],
+                        resolved_uri=resolved_uri,
+                        dry_run=dry_run,
+                        config_path=config_path,
+                        force=force,
+                    )
+
                 with ThreadPoolExecutor(max_workers=max_workers) as pool:
                     batch_outcomes: list[list[_StepOutcome]] = list(
-                        pool.map(
-                            functools.partial(
-                                lambda idx_s, *, _uri, _dry, _cfg, _force: _run_experiment_step(
-                                    idx_s[1],
-                                    resolved_uri=_uri,
-                                    dry_run=_dry,
-                                    config_path=_cfg,
-                                    force=_force,
-                                ),
-                                _uri=resolved_uri,
-                                _dry=dry_run,
-                                _cfg=config_path,
-                                _force=force,
-                            ),
-                            batch,
-                        )
+                        pool.map(_run_batch_step, batch)
                     )
                 should_stop = False
                 for k, (_, s) in enumerate(batch):
