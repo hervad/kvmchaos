@@ -191,7 +191,6 @@ class TestRunRecord:
         mock_fault = MagicMock()
         mock_fault.description = "test fault"
         mock_fault.destructive = False
-        mock_fault.local_only = False
         mock_fault.inject.side_effect = RuntimeError("injected failure")
 
         with patch("kvmchaos.cli.FAULTS", {"vm.pause": mock_fault}):
@@ -225,7 +224,6 @@ class TestRunRecord:
         mock_fault = MagicMock()
         mock_fault.description = "test fault"
         mock_fault.destructive = False
-        mock_fault.local_only = False
         mock_fault.verify.side_effect = RuntimeError("verify failed")
 
         with patch("kvmchaos.cli.FAULTS", {"vm.pause": mock_fault}):
@@ -384,7 +382,6 @@ class TestInterruptedInject:
         mock_fault = MagicMock()
         mock_fault.description = "test fault"
         mock_fault.destructive = False
-        mock_fault.local_only = False
 
         with (
             patch("kvmchaos.cli.FAULTS", {"vm.pause": mock_fault}),
@@ -1094,3 +1091,10 @@ class TestRunExperiment:
         records = list(runs_dir.glob("*.json"))
         # step 2 should have written a record
         assert len(records) >= 1
+
+
+def test_ssh_uri_rejected() -> None:
+    """qemu+ssh:// must be rejected with exit code 2."""
+    result = runner.invoke(app, ["--connect", "qemu+ssh://hypervisor/system", "list-vms"])
+    assert result.exit_code == 2
+    assert "not supported" in (result.output + (result.stderr or ""))

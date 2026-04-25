@@ -15,7 +15,6 @@ import functools
 import json
 import signal
 import time
-import urllib.parse
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass as _dataclass
@@ -122,6 +121,13 @@ def _root(
     """
     ctx.ensure_object(dict)
     ctx.obj[_CTX_KEY] = connect_uri
+    if connect_uri is not None and "ssh" in connect_uri:
+        typer.echo(
+            "error: qemu+ssh:// is not supported (v0.20+). "
+            "Run kvmchaos directly on the KVM hypervisor host.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     try:
         obs_logging.configure_stderr_logging(verbose=verbose, json_log_path=json_log)
     except OSError as exc:
@@ -519,22 +525,6 @@ _STATE_NAMES: dict[int, str] = {
 }
 
 
-def _is_remote(uri: str) -> bool:
-    """Return True if the URI refers to a non-local libvirt host.
-
-    A URI with an empty hostname (e.g. ``qemu:///system``) is a local Unix
-    socket. ``localhost``, ``127.0.0.1``, and ``::1`` are also treated as local.
-
-    Args:
-        uri: Resolved libvirt connection URI.
-
-    Returns:
-        True if the hostname is non-empty and not a localhost alias.
-    """
-    host = urllib.parse.urlparse(uri).hostname or ""
-    return host not in ("", "localhost", "127.0.0.1", "::1")
-
-
 _FAULT_BUILDERS: dict[str, Callable[..., Fault]] = {
     "disk.latency": lambda bandwidth, **_: DiskLatencyFault(bandwidth_bps=bandwidth * 1_000_000),
     "disk.fill": lambda size, **_: DiskFillFault(fill_bytes=size * 1024 * 1024),
@@ -696,13 +686,6 @@ def inject_cmd(
 
     raw_uri = ctx.obj.get(_CTX_KEY) if ctx.obj else None
     resolved_uri = resolve_uri(raw_uri)
-
-    if fault.local_only and _is_remote(resolved_uri):
-        typer.echo(
-            f"{fault_name} requires local execution — run kvmchaos directly on the KVM host.",
-            err=True,
-        )
-        raise typer.Exit(code=2)
 
     with connect(resolved_uri) as conn:
         try:
@@ -1062,13 +1045,6 @@ def _run_experiment_step_on_vm(
                 if violation is not None:
                     typer.echo(f"{violation}. Wait and retry, or pass --force.", err=True)
                     raise typer.Exit(code=2)
-
-        if fault.local_only and _is_remote(resolved_uri):
-            typer.echo(
-                f"{step.fault} requires local execution — run kvmchaos directly on the KVM host.",
-                err=True,
-            )
-            raise typer.Exit(code=2)
 
         # One libvirt connection per worker: libvirt-python's virConnect is
         # not safe to share across threads (the underlying virConnectPtr
