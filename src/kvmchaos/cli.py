@@ -945,6 +945,12 @@ def run_cmd(
                 i += len(batch)
             else:
                 # Sequential step (single step, even if parallel=True but no neighbour)
+                if step.parallel:
+                    typer.echo(
+                        f"step {i + 1}: parallel=true has no adjacent parallel neighbour;"
+                        " running sequentially.",
+                        err=True,
+                    )
                 vm_label = "/".join(step.vms)
                 typer.echo(f"\n--- step {i + 1}/{n}: {step.fault} on {vm_label} ---")
                 outcomes = _run_experiment_step(

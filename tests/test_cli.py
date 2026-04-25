@@ -953,6 +953,23 @@ class TestRunCmd:
         assert result.exit_code == 1, result.output
         assert "Experiment finished with 1 failure" in result.output
 
+    def test_lone_parallel_step_runs_sequentially_with_warning(self, tmp_path, monkeypatch) -> None:
+        """A single parallel=true step with no adjacent parallel neighbours runs
+        sequentially and emits a stderr warning about the downgrade."""
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        path = tmp_path / "e.toml"
+        path.write_text(
+            'name = "lone"\n\n[[step]]\nfault = "vm.pause"\nvm = "test"\n'
+            "duration = 0\nparallel = true\n"
+        )
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "run", "--yes", "--force", str(path)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Experiment complete" in result.output
+        assert "running sequentially" in result.output
+
 
 class TestRunExperiment:
     def test_missing_file_exits_2(self, tmp_path) -> None:
