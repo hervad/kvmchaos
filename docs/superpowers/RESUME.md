@@ -164,7 +164,56 @@ Key changes:
 
 ## What's next
 
-- **v0.19 lab validation:** smoke-test `vms = [...]` and `parallel = true` on RHEL 9 KVM host
-- **Phase 6 remaining:** SSH-based remote executor, cloud provider backends (AWS/GCP). Needs design.
+### v0.19 lab validation (next session — do this first)
 
-Each is a focused 1-2 hour session.
+Target host: RHEL 9, `qemu:///system`, VM `server1` (192.168.122.95).
+Run from the kvmchaos dev machine with the RPM **or** `uv run kvmchaos`.
+
+**Run 1 — fan-out smoke test**
+
+```toml
+# /tmp/test-fanout.toml
+name = "v0.19-fanout-lab"
+[[step]]
+fault = "vm.pause"
+vms = ["server1"]
+duration = 3
+```
+
+```bash
+kvmchaos --connect qemu:///system run --yes --force /tmp/test-fanout.toml
+```
+
+Expected: exit 0, output shows `step 1/1: vm.pause on server1`, `Experiment complete`.
+JSON events should carry `vms = ["server1"]` in the `inject.start` event.
+
+**Run 2 — parallel batch smoke test**
+
+```toml
+# /tmp/test-parallel.toml
+name = "v0.19-parallel-lab"
+[[step]]
+fault = "vm.pause"
+vm = "server1"
+duration = 3
+parallel = true
+[[step]]
+fault = "vm.pause"
+vm = "server1"
+duration = 3
+parallel = true
+```
+
+```bash
+kvmchaos --connect qemu:///system run --yes --force /tmp/test-parallel.toml
+```
+
+Expected: exit 0, output shows `parallel batch 1–2/2`, `Experiment complete`.
+Wall time should be ~3s not ~6s (confirms concurrency).
+
+Pass criteria: both runs exit 0, no unexpected stderr, events well-formed.
+Update RESUME.md with results and tag `v0.19.0` on the GitHub remote if passing.
+
+### Phase 6 remaining
+
+SSH-based remote executor, cloud provider backends (AWS/GCP). Needs design session.
