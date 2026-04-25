@@ -795,6 +795,19 @@ def inject_cmd(
             raise typer.Exit(code=1)
 
 
+def _collect_parallel_batch(steps: list[Step], start: int) -> list[tuple[int, Step]]:
+    """Return contiguous (original_index, step) pairs starting at ``start`` while parallel=True.
+
+    Returns an empty list if ``steps[start].parallel`` is False.
+    """
+    pairs: list[tuple[int, Step]] = []
+    j = start
+    while j < len(steps) and steps[j].parallel:
+        pairs.append((j, steps[j]))
+        j += 1
+    return pairs
+
+
 @app.command("run")
 def run_cmd(
     ctx: typer.Context,
@@ -855,7 +868,8 @@ def run_cmd(
     typer.echo(f"  {len(experiment.steps)} step(s), uri: {resolved_uri}")
     for i, step in enumerate(experiment.steps, start=1):
         marker = " [continue_on_failure]" if step.continue_on_failure else ""
-        typer.echo(f"  {i:>2}. {step.fault} on {step.vm} (duration={step.duration}s){marker}")
+        vm_label = "/".join(step.vms) if step.vms else step.vm
+        typer.echo(f"  {i:>2}. {step.fault} on {vm_label} (duration={step.duration}s){marker}")
 
     if not dry_run and not confirm("Run this experiment?", assume_yes=assume_yes):
         typer.echo("Aborted.")
@@ -870,30 +884,84 @@ def run_cmd(
     )
 
     failed_steps = 0
+    steps_list = list(experiment.steps)
+    n = len(steps_list)
     try:
-        for i, step in enumerate(experiment.steps, start=1):
-            typer.echo(f"\n--- step {i}/{len(experiment.steps)}: {step.fault} on {step.vm} ---")
-            outcome = _run_experiment_step_on_vm(
-                step,
-                step.vm,
-                resolved_uri=resolved_uri,
-                dry_run=dry_run,
-                config_path=config_path,
-                force=force,
-            )
-            if not outcome.success:
-                failed_steps += 1
-                if step.continue_on_failure:
-                    typer.echo(
-                        f"step {i} failed (exit {outcome.exit_code});"
-                        " continuing (continue_on_failure=true).",
-                        err=True,
-                    )
-                    continue
-                typer.echo(
-                    f"step {i} failed (exit {outcome.exit_code}); stopping experiment.", err=True
+        i = 0
+        while i < n:
+            step = steps_list[i]
+            batch = _collect_parallel_batch(steps_list, i)
+
+            if len(batch) >= 2:
+                # Parallel batch: submit all steps concurrently, collect outcomes
+                batch_label = " + ".join(f"{s.fault}@{'/'.join(s.vms)}" for _, s in batch)
+                typer.echo(f"\n--- parallel batch {i + 1}-{i + len(batch)}/{n}: {batch_label} ---")
+                _obs_emit(
+                    obs_events.EXPERIMENT_PARALLEL_BATCH,
+                    step_count=len(batch),
+                    vms=[vm for _, s in batch for vm in s.vms],
                 )
-                raise typer.Exit(code=1)
+                max_workers = min(len(batch), 8)
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    batch_outcomes: list[list[_StepOutcome]] = list(
+                        pool.map(
+                            functools.partial(
+                                lambda idx_s, *, _uri, _dry, _cfg, _force: _run_experiment_step(
+                                    idx_s[1],
+                                    resolved_uri=_uri,
+                                    dry_run=_dry,
+                                    config_path=_cfg,
+                                    force=_force,
+                                ),
+                                _uri=resolved_uri,
+                                _dry=dry_run,
+                                _cfg=config_path,
+                                _force=force,
+                            ),
+                            batch,
+                        )
+                    )
+                should_stop = False
+                for k, (_, s) in enumerate(batch):
+                    step_num = i + k + 1
+                    step_outcomes = batch_outcomes[k]
+                    failed_here = [o for o in step_outcomes if not o.success]
+                    if failed_here:
+                        failed_steps += 1
+                        if s.continue_on_failure:
+                            typer.echo(
+                                f"step {step_num} failed; continuing (continue_on_failure=true).",
+                                err=True,
+                            )
+                        else:
+                            typer.echo(f"step {step_num} failed; stopping experiment.", err=True)
+                            should_stop = True
+                if should_stop:
+                    raise typer.Exit(code=1)
+                i += len(batch)
+            else:
+                # Sequential step (single step, even if parallel=True but no neighbour)
+                vm_label = "/".join(step.vms)
+                typer.echo(f"\n--- step {i + 1}/{n}: {step.fault} on {vm_label} ---")
+                outcomes = _run_experiment_step(
+                    step,
+                    resolved_uri=resolved_uri,
+                    dry_run=dry_run,
+                    config_path=config_path,
+                    force=force,
+                )
+                failed_outcomes = [o for o in outcomes if not o.success]
+                if failed_outcomes:
+                    failed_steps += 1
+                    if step.continue_on_failure:
+                        typer.echo(
+                            f"step {i + 1} failed; continuing (continue_on_failure=true).",
+                            err=True,
+                        )
+                    else:
+                        typer.echo(f"step {i + 1} failed; stopping experiment.", err=True)
+                        raise typer.Exit(code=1)
+                i += 1
     except Exception:
         exp_status = "error"
         raise
