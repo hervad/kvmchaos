@@ -1117,6 +1117,11 @@ def _run_experiment_step_on_vm(
                 try:
                     time.sleep(step.duration)
                 except KeyboardInterrupt:
+                    # Python delivers KeyboardInterrupt to the main thread only.
+                    # In a fan-out worker this catch is best-effort: the sleep is
+                    # interrupted but sibling threads continue until their holds
+                    # complete. A shared threading.Event-based stop signal is
+                    # needed for fully cooperative cancellation (v0.19 known gap).
                     typer.echo("Hold interrupted; reverting.", err=True)
 
             revert_step = _run_step(

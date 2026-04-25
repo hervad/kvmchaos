@@ -924,6 +924,35 @@ class TestRunCmd:
         assert result.exit_code == 0, result.output
         assert "Experiment complete" in result.output
 
+    def test_parallel_batch_continue_on_failure(self, tmp_path, monkeypatch) -> None:
+        """Parallel batch with one failing continue_on_failure=true step still completes."""
+        import kvmchaos.cli as cli_mod
+        from kvmchaos.cli import _StepOutcome
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        def fake_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+            success = vm_name != "bad"
+            return _StepOutcome(vm=vm_name, success=success, exit_code=0 if success else 1)
+
+        monkeypatch.setattr(cli_mod, "_run_experiment_step_on_vm", fake_on_vm)
+
+        path = tmp_path / "e.toml"
+        path.write_text(
+            'name = "cof-batch"\n\n'
+            '[[step]]\nfault = "vm.pause"\nvm = "bad"\nduration = 0\n'
+            "parallel = true\ncontinue_on_failure = true\n\n"
+            '[[step]]\nfault = "vm.pause"\nvm = "test"\nduration = 0\nparallel = true\n'
+        )
+        result = runner.invoke(
+            app,
+            ["--connect", "test:///default", "run", "--yes", "--force", str(path)],
+        )
+        # continue_on_failure=true on the failing step → batch completes, experiment
+        # finishes with failed_steps=1 (exit 1), not an early abort
+        assert result.exit_code == 1, result.output
+        assert "Experiment finished with 1 failure" in result.output
+
 
 class TestRunExperiment:
     def test_missing_file_exits_2(self, tmp_path) -> None:
