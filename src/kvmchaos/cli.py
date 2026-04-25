@@ -798,7 +798,9 @@ def inject_cmd(
 def _collect_parallel_batch(steps: list[Step], start: int) -> list[tuple[int, Step]]:
     """Return contiguous (original_index, step) pairs starting at ``start`` while parallel=True.
 
-    Returns an empty list if ``steps[start].parallel`` is False.
+    Returns an empty list if ``steps[start].parallel`` is False. A single step with
+    ``parallel=True`` but no adjacent parallel neighbours returns a list of length 1;
+    the caller treats that the same as a non-parallel step (``len(batch) >= 2`` guard).
     """
     pairs: list[tuple[int, Step]] = []
     j = start
@@ -886,6 +888,18 @@ def run_cmd(
     failed_steps = 0
     steps_list = list(experiment.steps)
     n = len(steps_list)
+
+    # Defined once here (not inside the while loop) so the closure over the run_cmd
+    # parameters is stable and the function object is not recreated every iteration.
+    def _run_batch_step(idx_s: tuple[int, Step]) -> list[_StepOutcome]:
+        return _run_experiment_step(
+            idx_s[1],
+            resolved_uri=resolved_uri,
+            dry_run=dry_run,
+            config_path=config_path,
+            force=force,
+        )
+
     try:
         i = 0
         while i < n:
@@ -902,16 +916,6 @@ def run_cmd(
                     vms=[vm for _, s in batch for vm in s.vms],
                 )
                 max_workers = min(len(batch), 8)
-
-                def _run_batch_step(idx_s: tuple[int, Step]) -> list[_StepOutcome]:
-                    return _run_experiment_step(
-                        idx_s[1],
-                        resolved_uri=resolved_uri,
-                        dry_run=dry_run,
-                        config_path=config_path,
-                        force=force,
-                    )
-
                 with ThreadPoolExecutor(max_workers=max_workers) as pool:
                     batch_outcomes: list[list[_StepOutcome]] = list(
                         pool.map(_run_batch_step, batch)
@@ -957,8 +961,11 @@ def run_cmd(
                         typer.echo(f"step {i + 1} failed; stopping experiment.", err=True)
                         raise typer.Exit(code=1)
                 i += 1
-    except Exception:
-        exp_status = "error"
+    except BaseException as exc:
+        # typer.Exit is a controlled stop (e.g. step failure with continue_on_failure=False).
+        # Only mark "error" for unexpected exceptions; let the finally block resolve "partial".
+        if not isinstance(exc, typer.Exit):
+            exp_status = "error"
         raise
     finally:
         if exp_status == "ok" and failed_steps > 0:
