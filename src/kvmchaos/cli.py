@@ -870,7 +870,7 @@ def run_cmd(
     typer.echo(f"  {len(experiment.steps)} step(s), uri: {resolved_uri}")
     for i, step in enumerate(experiment.steps, start=1):
         marker = " [continue_on_failure]" if step.continue_on_failure else ""
-        vm_label = "/".join(step.vms) if step.vms else step.vm
+        vm_label = "/".join(step.vms)
         typer.echo(f"  {i:>2}. {step.fault} on {vm_label} (duration={step.duration}s){marker}")
 
     if not dry_run and not confirm("Run this experiment?", assume_yes=assume_yes):
@@ -927,13 +927,18 @@ def run_cmd(
                     failed_here = [o for o in step_outcomes if not o.success]
                     if failed_here:
                         failed_steps += 1
+                        worst_code = max((o.exit_code for o in failed_here), default=1)
                         if s.continue_on_failure:
                             typer.echo(
-                                f"step {step_num} failed; continuing (continue_on_failure=true).",
+                                f"step {step_num} failed (exit {worst_code});"
+                                " continuing (continue_on_failure=true).",
                                 err=True,
                             )
                         else:
-                            typer.echo(f"step {step_num} failed; stopping experiment.", err=True)
+                            typer.echo(
+                                f"step {step_num} failed (exit {worst_code}); stopping experiment.",
+                                err=True,
+                            )
                             should_stop = True
                 if should_stop:
                     raise typer.Exit(code=1)
@@ -952,13 +957,18 @@ def run_cmd(
                 failed_outcomes = [o for o in outcomes if not o.success]
                 if failed_outcomes:
                     failed_steps += 1
+                    worst_code = max((o.exit_code for o in failed_outcomes), default=1)
                     if step.continue_on_failure:
                         typer.echo(
-                            f"step {i + 1} failed; continuing (continue_on_failure=true).",
+                            f"step {i + 1} failed (exit {worst_code});"
+                            " continuing (continue_on_failure=true).",
                             err=True,
                         )
                     else:
-                        typer.echo(f"step {i + 1} failed; stopping experiment.", err=True)
+                        typer.echo(
+                            f"step {i + 1} failed (exit {worst_code}); stopping experiment.",
+                            err=True,
+                        )
                         raise typer.Exit(code=1)
                 i += 1
     except BaseException as exc:
