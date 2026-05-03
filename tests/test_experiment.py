@@ -137,6 +137,51 @@ class TestStep:
         assert s.parallel is True
 
 
+class TestStepOutcome:
+    def test_defaults(self) -> None:
+        from kvmchaos.experiment import _StepOutcome
+
+        o = _StepOutcome(vm="server1", success=True)
+        assert o.exit_code == 0
+
+    def test_failed_outcome(self) -> None:
+        from kvmchaos.experiment import _StepOutcome
+
+        o = _StepOutcome(vm="server1", success=False, exit_code=1)
+        assert not o.success
+        assert o.exit_code == 1
+
+
+class TestCollectParallelBatch:
+    def _steps(self, parallels: list[bool]) -> list[Step]:
+        return [Step(fault="vm.pause", vm=f"s{i}", parallel=p) for i, p in enumerate(parallels)]
+
+    def test_empty_on_non_parallel_step(self) -> None:
+        from kvmchaos.experiment import _collect_parallel_batch
+
+        steps = self._steps([False, True])
+        assert _collect_parallel_batch(steps, 0) == []
+
+    def test_collects_contiguous_parallel_steps(self) -> None:
+        from kvmchaos.experiment import _collect_parallel_batch
+
+        steps = self._steps([True, True, False])
+        batch = _collect_parallel_batch(steps, 0)
+        assert batch == [(0, steps[0]), (1, steps[1])]
+
+    def test_stops_at_non_parallel(self) -> None:
+        from kvmchaos.experiment import _collect_parallel_batch
+
+        steps = self._steps([True, False, True])
+        assert len(_collect_parallel_batch(steps, 0)) == 1
+
+    def test_mid_sequence_start(self) -> None:
+        from kvmchaos.experiment import _collect_parallel_batch
+
+        steps = self._steps([False, True, True])
+        assert len(_collect_parallel_batch(steps, 1)) == 2
+
+
 class TestLoadExperimentValidation:
     def test_negative_duration_raises(self, tmp_path: Path) -> None:
         path = tmp_path / "e.toml"

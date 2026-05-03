@@ -151,3 +151,37 @@ def load_experiment(path: Path) -> Experiment:
         description=str(data.get("description", "")),
         steps=tuple(steps),
     )
+
+
+@dataclass
+class _StepOutcome:
+    """Result of executing a single experiment step on one VM."""
+
+    vm: str
+    success: bool
+    exit_code: int = 0
+
+
+def _collect_parallel_batch(steps: list[Step], start: int) -> list[tuple[int, Step]]:
+    """Return contiguous (original_index, step) pairs starting at ``start`` while parallel=True.
+
+    Returns an empty list if ``steps[start].parallel`` is False. A single step
+    with ``parallel=True`` but no adjacent parallel neighbours returns a list of
+    length 1; the caller treats that the same as a non-parallel step
+    (``len(batch) >= 2`` guard).
+
+    Args:
+        steps: Full list of experiment steps.
+        start: Index to begin collecting from.
+
+    Returns:
+        List of (original_index, step) pairs for the contiguous parallel run.
+    """
+    if not steps[start].parallel:
+        return []
+    pairs: list[tuple[int, Step]] = []
+    j = start
+    while j < len(steps) and steps[j].parallel:
+        pairs.append((j, steps[j]))
+        j += 1
+    return pairs

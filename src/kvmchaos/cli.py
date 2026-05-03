@@ -17,7 +17,6 @@ import signal
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass as _dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -27,7 +26,12 @@ import typer
 from kvmchaos import __version__
 from kvmchaos.config import load_config, rate_limit_violation
 from kvmchaos.eventlog import configure_logging, log_event
-from kvmchaos.experiment import Step, load_experiment
+from kvmchaos.experiment import (
+    Step,
+    _collect_parallel_batch,
+    _StepOutcome,
+    load_experiment,
+)
 from kvmchaos.faults import FAULTS
 from kvmchaos.faults.base import Fault
 from kvmchaos.faults.clock_skew import ClockSkewFault
@@ -62,15 +66,6 @@ app = typer.Typer(
 _CTX_KEY = "connect_uri"
 
 _DEFAULT_REPORT_PATH = Path("kvmchaos-report.html")
-
-
-@_dataclass
-class _StepOutcome:
-    """Result of executing a single experiment step on one VM."""
-
-    vm: str
-    success: bool
-    exit_code: int = 0
 
 
 def _version_callback(value: bool) -> None:
@@ -778,21 +773,6 @@ def inject_cmd(
         )
         if interrupted or verify_failed:
             raise typer.Exit(code=1)
-
-
-def _collect_parallel_batch(steps: list[Step], start: int) -> list[tuple[int, Step]]:
-    """Return contiguous (original_index, step) pairs starting at ``start`` while parallel=True.
-
-    Returns an empty list if ``steps[start].parallel`` is False. A single step with
-    ``parallel=True`` but no adjacent parallel neighbours returns a list of length 1;
-    the caller treats that the same as a non-parallel step (``len(batch) >= 2`` guard).
-    """
-    pairs: list[tuple[int, Step]] = []
-    j = start
-    while j < len(steps) and steps[j].parallel:
-        pairs.append((j, steps[j]))
-        j += 1
-    return pairs
 
 
 @app.command("run")
