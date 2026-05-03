@@ -6,6 +6,51 @@ All notable changes to kvmchaos. Format loosely follows
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-05-03
+
+### Removed
+- `qemu+ssh://` URI support — kvmchaos must run directly on the hypervisor
+  host. SSH URIs are rejected at startup with exit 2 and a clear message.
+- `local_only` ClassVar from `Fault` protocol and all 12 fault implementations.
+
+### Changed
+- `safety.py` renamed to `prompts.py` — the module contains only a UI confirm
+  helper, not safety-enforcement logic.
+- `_StepOutcome` and `_collect_parallel_batch` moved from `cli.py` to
+  `experiment.py`; importable without pulling in the full CLI.
+
+### Fixed
+- SIGTERM during inject or verify now triggers revert immediately (previously
+  SIGTERM was only handled during the hold phase).
+- `vm.freeze` and `clock.skew`: per-VM state stored in a `dict[str, …]` keyed
+  by `domain.name()` — eliminates singleton race under parallel fan-out.
+- `vm.kill.revert`: idempotent when domain is already running after external
+  restart or parallel revert race (mirrors `vm.pause.revert` pattern).
+- `disk.fill.inject`: fill file deleted on `CalledProcessError` in both the
+  `fallocate` and `dd` paths — no partial file left on failed inject.
+- `tc.del_root_qdisc`: `"Cannot find device"` treated as idempotent — covers
+  the VM-kill-while-net-fault-active path where the tap device is destroyed.
+- `vm_starve.verify`: `actual` initialised before retry loop — no `NameError`
+  if `_VERIFY_RETRIES` is ever set to 0.
+- `config.py`: unrecognised TOML top-level sections now emit `warnings.warn`.
+- `experiment.py`: `load_experiment` validates `duration >= 0`, rejects empty
+  `vms`, and raises `ValueError` on unknown step fields.
+- `_run_experiment_step_on_vm`: interrupted hold now writes `outcome =
+  "interrupted"` instead of `"success"`.
+- `runs show`: `json.JSONDecodeError` from a corrupted record now exits 2 with
+  a clear message instead of a raw traceback.
+- HTML report `_summary`: range start/end skip records missing `started_at` /
+  `ended_at` — no more blank left side of the range display.
+- `--outcome` help text and docstrings now list `"interrupted"` as a valid
+  value alongside `success`, `fail`, `dry_run`.
+
+### Added
+- Cooperative `KeyboardInterrupt` cancellation for parallel fan-out: workers
+  poll a shared `threading.Event`; any KI or sibling cancellation exits the
+  hold immediately and runs revert. Closes the v0.19 known gap.
+- `--max-workers N` flag on `kvmchaos run` — caps parallel worker threads
+  for fan-out steps (default 8).
+
 ## [0.19.2] — 2026-04-25
 
 ### Fixed

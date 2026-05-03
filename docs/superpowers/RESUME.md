@@ -1,8 +1,8 @@
 # RESUME — kvmchaos Checkpoint
 
-**Saved:** 2026-04-25 (v0.20 in progress — Tasks 1+2 of 8 complete)
-**Status:** v0.20 branch on `main`. SSH support removed, local_only attribute gone. 414 tests, 96% coverage, ruff clean.
-**Resume point:** Task 3 of 8 in `docs/superpowers/plans/2026-04-25-kvmchaos-v0.20-cleanup.md`.
+**Saved:** 2026-05-03 (v0.20.0 complete — pending lab validation before tag)
+**Status:** `main` HEAD `53a9a72`. 458 tests, 96% coverage, ruff clean. Lab validation required on Fedora 43 KVM host before pushing `v0.20.0` tag.
+**Resume point:** Lab validation in `docs/superpowers/plans/2026-04-25-kvmchaos-v0.20-cleanup.md` Task 8 Step 3, then `git tag v0.20.0`.
 
 ## What's done
 
@@ -129,11 +129,10 @@ Resolves the v0.16 stderr mixed-stream follow-up.
 
 ## Repo state
 
-- `main` HEAD: `fec1fc9` (feat!: remove qemu+ssh:// support).
-- Tags: `v0.16.0`–`v0.19.2` intact; v0.20.0 not yet tagged (in progress).
+- `main` HEAD: `53a9a72` (feat: add --max-workers flag to kvmchaos run).
+- Tags: `v0.16.0`–`v0.19.2` intact; `v0.20.0` not yet pushed (lab validation pending).
 - GitHub remote: `https://github.com/hermanvadym/kvmchaos` (private).
-- Tests: 414 passing, 96% coverage, ruff clean, format clean.
-  (test count dropped from 448: ~34 SSH/local_only tests deleted; coverage rose as dead guard code was removed)
+- Tests: 458 passing, 96% coverage, ruff clean, format clean.
 
 ## Known follow-ups
 
@@ -168,22 +167,20 @@ Key changes:
 Per the v0.19.1 project review (`docs/superpowers/reviews/2026-04-25-v0.19-project-review.md`)
 and the resolved scope decisions in `PLAN.md`:
 
-### v0.20.0 — drop SSH + cooperative cancellation + experiment-runner extraction
+### v0.20.0 — drop SSH + cooperative cancellation + experiment-runner extraction (2026-05-03)
 
-Breaking change: `qemu+ssh://` support is removed (see Decisions Log
-2026-04-25). Plus the H2/H3 latent bugs from the review:
+**SHIPPED** (lab validation pending before `git tag v0.20.0`):
 
-- Remove `local_only` ClassVar from every fault; remove `_is_remote()`,
-  remove SSH-related lab tests, document the breaking change in CHANGELOG.
-- H2: shared `threading.Event` for cooperative KeyboardInterrupt
-  propagation across fan-out workers.
-- H3: `disk.fill` inject cleanup on partial-fallocate failure.
-- M2: extract `_run_experiment_step_on_vm` / `_run_experiment_step` /
-  `_collect_parallel_batch` from `cli.py` into `experiment.py`; rename
-  `safety.py` → `prompts.py` (contents are just the `confirm` helper).
-- M3: `--max-workers` flag.
-- New: `kvmchaos doctor` orphan-fault scan (report-only default,
-  `--auto-revert` opt-in) — closes the crash-recovery gap.
+- Removed `qemu+ssh://` support and `local_only` ClassVar from all faults.
+- Cooperative `threading.Event` cancellation across parallel fan-out workers.
+- `disk.fill` inject cleanup on partial-fallocate failure.
+- `_StepOutcome` / `_collect_parallel_batch` moved to `experiment.py`;
+  `safety.py` renamed to `prompts.py`.
+- `--max-workers` flag on `kvmchaos run`.
+- Comprehensive bug-audit: 26 fixes including singleton races, SIGTERM window,
+  JSONDecodeError handling, `_summary` missing-timestamp, experiment validation,
+  interrupted outcome recording.
+- 458 tests, 96% coverage, ruff clean.
 
 ### v0.21.0 — production-credibility features
 

@@ -1,6 +1,6 @@
 [project]
 name = "kvmchaos"
-version = "0.19.2"
+version = "0.20.0"
 description = "Agent-less chaos engineering CLI for KVM/libvirt VMs."
 readme = "README.md"
 requires-python = ">=3.11"
