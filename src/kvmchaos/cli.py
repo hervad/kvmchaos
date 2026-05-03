@@ -46,6 +46,7 @@ from kvmchaos.observability import events as obs_events
 from kvmchaos.observability import logging as obs_logging
 from kvmchaos.observability import set_notifier as _obs_set_notifier
 from kvmchaos.observability.notifier import Notifier
+from kvmchaos.prompts import confirm
 from kvmchaos.report import load_records, render_html
 from kvmchaos.runrecord import (
     default_runs_dir,
@@ -54,7 +55,6 @@ from kvmchaos.runrecord import (
     resolve_id,
     write_run_record,
 )
-from kvmchaos.safety import confirm
 
 app = typer.Typer(
     help="Agent-less chaos engineering for KVM/libvirt VMs.",

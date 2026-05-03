@@ -2,7 +2,7 @@
 
 import io
 
-from kvmchaos.safety import confirm
+from kvmchaos.prompts import confirm
 
 
 def test_assume_yes_skips_prompt(capsys):
