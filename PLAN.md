@@ -218,6 +218,17 @@ Findings from production readiness audit (2026-04-23). Prioritised for RHEL 9 pr
 - [x] `ruff check`, `ruff format --check` clean
 - [x] Lab validation on Fedora 43 KVM host (2026-04-23)
 
+## Acceptance (v0.20) — SSH Removal & Structural Cleanup
+
+Lab validation: Fedora 43 KVM host (cachyos), 2026-05-03.
+
+- [x] `kvmchaos --connect qemu+ssh://localhost/system list-vms` exits 2 with "not supported" message (SSH removed)
+- [x] `kvmchaos run --yes --force /tmp/test-fanout.toml` — vm.pause on server1 for 3s, exit 0, run record written with microsecond-precision filename
+- [x] `kvmchaos run --yes --force --max-workers 2 /tmp/test-parallel.toml` — parallel vm.pause on server1 + server2, exit 0, two distinct run records, wall time ≈ 3s
+- [x] `local_only` ClassVar removed from all faults and Protocol — `list-faults` output unchanged
+- [x] `safety.py` → `prompts.py` rename transparent; confirm prompt works
+- [x] `pytest` 458 passing, 96% coverage, ruff clean
+
 ## Backlog (post-v0.11, not scheduled)
 
 - `disk.corrupt` — deferred; requires raw disk images or a secondary non-root disk.
