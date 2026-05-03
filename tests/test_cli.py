@@ -1098,6 +1098,29 @@ class TestRunCmd:
         assert "Experiment complete" in result.output
         assert "running sequentially" in result.output
 
+    def test_max_workers_flag_accepted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--max-workers must be accepted by run_cmd without exit 2."""
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        exp = tmp_path / "e.toml"
+        exp.write_text('name = "t"\n\n[[step]]\nfault = "vm.pause"\nvm = "test"\nduration = 0\n')
+        result = runner.invoke(
+            app,
+            [
+                "--connect",
+                "test:///default",
+                "run",
+                "--yes",
+                "--force",
+                "--max-workers",
+                "4",
+                str(exp),
+            ],
+        )
+        # Exit 0/1 are both fine; exit 2 means the flag was not recognised.
+        assert result.exit_code != 2, f"--max-workers flag rejected: {result.output}"
+
 
 class TestRunExperiment:
     def test_missing_file_exits_2(self, tmp_path) -> None:

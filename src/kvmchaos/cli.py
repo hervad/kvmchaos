@@ -792,6 +792,13 @@ def run_cmd(
         help="Path to config.toml (default: $XDG_CONFIG_HOME/kvmchaos/config.toml).",
     ),
     force: bool = typer.Option(False, "--force", help="Bypass allowlist and rate-limit checks."),
+    max_workers: int = typer.Option(
+        8,
+        "--max-workers",
+        min=1,
+        max=256,
+        help="Maximum worker threads for fan-out steps. Default: 8.",
+    ),
 ) -> None:
     """Run a TOML experiment: a sequence of ``inject`` steps.
 
@@ -809,6 +816,7 @@ def run_cmd(
         dry_run: If True, validate everything but make no libvirt calls.
         config_path: Optional override for the config file location.
         force: If True, bypass allowlist and rate-limit checks.
+        max_workers: Maximum worker threads for fan-out steps.
     """
     configure_logging()
 
@@ -864,6 +872,7 @@ def run_cmd(
             dry_run=dry_run,
             config_path=config_path,
             force=force,
+            max_workers=max_workers,
         )
 
     try:
@@ -881,8 +890,7 @@ def run_cmd(
                     step_count=len(batch),
                     vms=[vm for _, s in batch for vm in s.vms],
                 )
-                max_workers = min(len(batch), 8)
-                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                with ThreadPoolExecutor(max_workers=min(len(batch), max_workers)) as pool:
                     batch_outcomes: list[list[_StepOutcome]] = list(
                         pool.map(_run_batch_step, batch)
                     )
@@ -925,6 +933,7 @@ def run_cmd(
                     dry_run=dry_run,
                     config_path=config_path,
                     force=force,
+                    max_workers=max_workers,
                 )
                 failed_outcomes = [o for o in outcomes if not o.success]
                 if failed_outcomes:
