@@ -60,6 +60,6 @@ extend-immutable-calls = ["typer.Option", "typer.Argument"]
 convention = "google"
 
 [tool.pytest.ini_options]
-addopts = "-q --cov=kvmchaos --cov-report=term-missing"
+addopts = "-q --cov=kvmchaos --cov-report=term-missing --import-mode=importlib"
 testpaths = ["tests"]
 pythonpath = ["src"]

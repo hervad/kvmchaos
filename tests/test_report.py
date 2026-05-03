@@ -117,6 +117,36 @@ class TestRenderHtml:
         assert "2026-04-22 | 22:03:59 UTC" in html
         assert "+00:00" not in html
 
+    def test_summary_range_tolerates_missing_timestamps(self) -> None:
+        """Records with absent started_at/ended_at must not corrupt the range display."""
+        from kvmchaos.report import render_html
+
+        records = [
+            {
+                "fault": "vm.pause",
+                "vm": "s1",
+                "outcome": "success",
+                "started_at": "2026-04-22T22:03:14+00:00",
+                "ended_at": "2026-04-22T22:03:59+00:00",
+                "duration_s": 45,
+                "dry_run": False,
+                "steps": [],
+            },
+            {
+                "fault": "vm.pause",
+                "vm": "s2",
+                "outcome": "fail",
+                "duration_s": 0,
+                "dry_run": False,
+                "steps": [],
+            },  # missing started_at/ended_at
+        ]
+        html = render_html(records)
+        # Range start must show the real date from record 1, not collapse to ""
+        # (empty string is lexicographically less than any real timestamp, so
+        # min() without filtering picks "" from the record missing started_at)
+        assert "Range: 2026" in html
+
     def test_table_includes_all_columns(self) -> None:
         html = render_html([_RECORD_SUCCESS])
         for header in ("started_at", "fault", "vm", "outcome", "duration_s", "dry_run"):

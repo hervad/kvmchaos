@@ -70,6 +70,16 @@ class TestResolveId:
         with pytest.raises(FileNotFoundError):
             resolve_id(tmp_path / "nope", "anything")
 
+    def test_record_id_round_trip(self, tmp_path: Path) -> None:
+        """The id shown in `runs list` must resolve back to the written file."""
+        from kvmchaos.cli import _record_id
+        from kvmchaos.runrecord import write_run_record
+
+        record = _sample("2026-04-22T22:03:14.123456+00:00")
+        path = write_run_record(record, tmp_path)
+        derived_id = _record_id(tmp_path, record)
+        assert path.stem == derived_id
+
 
 class TestLoadRecord:
     def test_loads_and_parses_json(self, tmp_path: Path) -> None:
@@ -177,6 +187,17 @@ class TestRunsShowCommand:
         )
         result = runner.invoke(app, ["runs", "show", "nope", "--runs-dir", str(tmp_path)])
         assert result.exit_code == 2
+
+    def test_corrupted_json_exits_2_with_message(self, tmp_path: Path) -> None:
+        """A corrupted run record must produce a helpful error message, not a traceback."""
+        bad = tmp_path / "20260422T220314Z-vm-pause-server1.json"
+        bad.write_text("{ not valid json }")
+        result = runner.invoke(
+            app, ["runs", "show", "20260422T220314Z-vm-pause-server1", "--runs-dir", str(tmp_path)]
+        )
+        assert result.exit_code == 2
+        combined = result.output + (result.stderr or "")
+        assert any(w in combined.lower() for w in ("corrupt", "invalid", "json", "decode"))
 
 
 class TestRunsListFilters:

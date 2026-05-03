@@ -132,6 +132,35 @@ class TestDiskFillInject:
         # dd fallback should have been called instead
         # The fill file is produced either way — test existence
 
+    def test_inject_cleans_up_fill_file_on_fallocate_error(self, tmp_path: Path):
+        """Partial fill file must be deleted if fallocate raises CalledProcessError."""
+        import shutil
+
+        image = tmp_path / "vm.qcow2"
+        image.write_text("")
+        domain = _mock_domain()
+        fault = DiskFillFault(fill_bytes=1024)
+        fill = _fill_path(image, "server1")
+
+        def _fallocate_creates_partial(*args: object, **kwargs: object) -> None:
+            fill.write_bytes(b"partial")  # file created before failure, as fallocate does
+            raise subprocess.CalledProcessError(1, "fallocate")
+
+        with (
+            patch("kvmchaos.faults.disk_fill._image_path", return_value=image),
+            patch(
+                "kvmchaos.faults.disk_fill.shutil.disk_usage",
+                return_value=shutil.disk_usage("/")._replace(free=10 * 1024 * 1024 * 1024),
+            ),
+            patch(
+                "kvmchaos.faults.disk_fill.subprocess.run", side_effect=_fallocate_creates_partial
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            fault.inject(domain)
+
+        assert not fill.exists(), "fill file must be removed after failed inject"
+
     def test_inject_raises_on_fallocate_failure(self, tmp_path: Path):
         image = tmp_path / "vm.qcow2"
         image.write_text("")

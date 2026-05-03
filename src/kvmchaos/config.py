@@ -29,6 +29,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import tomllib
+import warnings
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -150,6 +151,10 @@ def load_config(explicit: Path | None = None) -> Config:
     if path is None:
         return Config()
     data = tomllib.loads(path.read_text(encoding="utf-8"))
+    known_sections = {"allowlist", "rate_limit", "notifier"}
+    unknown = set(data) - known_sections
+    if unknown:
+        warnings.warn(f"config: unrecognized sections: {sorted(unknown)}", stacklevel=2)
     al = data.get("allowlist", {})
     rl = data.get("rate_limit", {})
     nf_raw = data.get("notifier", {})

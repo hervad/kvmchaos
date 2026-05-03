@@ -6,6 +6,24 @@ All notable changes to kvmchaos. Format loosely follows
 
 ## [Unreleased]
 
+## [0.19.2] — 2026-04-25
+
+### Fixed
+- Run-record filenames now use microsecond-precision timestamps to prevent
+  collisions when parallel-batch workers target the same VM within the same
+  second. A defensive counter-suffix retry handles the rare microsecond-tie.
+  `fsync` before `os.replace` prevents empty records surviving a host crash.
+  Microseconds are stripped from displayed timestamps (HTML report, `runs list`)
+  while the full precision is retained in the audit trail.
+
+## [0.19.1] — 2026-04-25
+
+### Fixed
+- `vm.pause` revert is now idempotent under concurrent fan-out: when a
+  parallel sibling beats the current worker to `resume()`, the resulting
+  `libvirtError` is silently ignored — the desired end-state (domain running)
+  is already achieved.
+
 ## [0.19.0] — 2026-04-25
 
 ### Added

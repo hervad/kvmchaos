@@ -60,6 +60,14 @@ class VmKillFault:
             domain: A live libvirt domain handle.
 
         Raises:
-            libvirt.libvirtError: If the start call fails.
+            libvirt.libvirtError: If the start call fails for a reason other
+                than the domain already being in the running state.
         """
-        domain.create()
+        try:
+            domain.create()
+        except libvirt.libvirtError:
+            # Idempotent: domain may have restarted externally between inject
+            # and revert (e.g. auto-restart policy, parallel revert race).
+            if domain.state()[0] == libvirt.VIR_DOMAIN_RUNNING:
+                return
+            raise

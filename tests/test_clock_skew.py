@@ -121,3 +121,27 @@ class TestClockSkewRevert:
         fault = ClockSkewFault(skew_seconds=3600)
         with pytest.raises(RuntimeError, match="not injected"):
             fault.revert(domain)
+
+
+class TestClockSkewParallelIsolation:
+    def test_verify_uses_per_domain_expected_time(self):
+        """Singleton fault must track expected time per VM, not overwrite on second inject."""
+        fault = ClockSkewFault(skew_seconds=3600)
+
+        domain_a = MagicMock(spec=libvirt.virDomain)
+        domain_a.name.return_value = "vm-a"
+        domain_a.getTime.return_value = {"seconds": 1_000_000}
+
+        domain_b = MagicMock(spec=libvirt.virDomain)
+        domain_b.name.return_value = "vm-b"
+        domain_b.getTime.return_value = {"seconds": 2_000_000}
+
+        fault.inject(domain_a)  # expected for vm-a: 1_003_600
+        fault.inject(domain_b)  # expected for vm-b: 2_003_600; must NOT overwrite vm-a's
+
+        # Both domains report their correctly-skewed times
+        domain_a.getTime.return_value = {"seconds": 1_003_600}
+        domain_b.getTime.return_value = {"seconds": 2_003_600}
+
+        fault.verify(domain_a)  # must not raise
+        fault.verify(domain_b)  # must not raise

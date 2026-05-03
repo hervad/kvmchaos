@@ -62,7 +62,7 @@ def test_run_emits_experiment_start_and_end(
 ) -> None:
     recipe = tmp_path / "exp.toml"
     recipe.write_text(
-        'name = "test-exp"\n[[step]]\nfault = "vm.pause"\nvm = "test"\nduration_s = 0\n',
+        'name = "test-exp"\n[[step]]\nfault = "vm.pause"\nvm = "test"\nduration = 0\n',
         encoding="utf-8",
     )
     runner = CliRunner()
@@ -92,12 +92,12 @@ def test_run_emits_partial_status_on_continued_failure(
             "[[step]]\n"
             'fault = "vm.pause"\n'
             'vm = "nonexistent-vm-xyz"\n'
-            "duration_s = 0\n"
+            "duration = 0\n"
             "continue_on_failure = true\n"
             "[[step]]\n"
             'fault = "vm.pause"\n'
             'vm = "test"\n'
-            "duration_s = 0\n"
+            "duration = 0\n"
         ),
         encoding="utf-8",
     )

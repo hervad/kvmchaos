@@ -331,7 +331,7 @@ def report_cmd(
     ),
     fault: str | None = typer.Option(None, "--fault", help="Only the named fault."),
     outcome: str | None = typer.Option(
-        None, "--outcome", help="Only this outcome (success, fail, dry_run)."
+        None, "--outcome", help="Only this outcome (success, fail, interrupted, dry_run)."
     ),
     vm: str | None = typer.Option(None, "--vm", help="Only this VM name."),
 ) -> None:
@@ -342,7 +342,7 @@ def report_cmd(
         runs_dir: Runs directory. If omitted, ``default_runs_dir()`` is used.
         since: Optional lower bound on ``started_at``.
         fault: Optional exact fault name filter.
-        outcome: Optional outcome filter (``success``/``fail``/``dry_run``).
+        outcome: Optional outcome filter (``success``/``fail``/``interrupted``/``dry_run``).
         vm: Optional exact VM name filter.
     """
     target_runs = runs_dir if runs_dir is not None else default_runs_dir()
@@ -407,7 +407,7 @@ def runs_list_cmd(
     ),
     fault: str | None = typer.Option(None, "--fault", help="Only the named fault."),
     outcome: str | None = typer.Option(
-        None, "--outcome", help="Only this outcome (success, fail, dry_run)."
+        None, "--outcome", help="Only this outcome (success, fail, interrupted, dry_run)."
     ),
     vm: str | None = typer.Option(None, "--vm", help="Only this VM name."),
 ) -> None:
@@ -459,7 +459,12 @@ def runs_show_cmd(
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from exc
-    typer.echo(json.dumps(load_record(path), indent=2))
+    try:
+        record = load_record(path)
+    except json.JSONDecodeError as exc:
+        typer.echo(f"Run record is corrupt (invalid JSON): {path}\n{exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(json.dumps(record, indent=2))
 
 
 def _runs_table(runs_dir: Path, records: list[dict[str, object]]) -> str:
@@ -607,7 +612,7 @@ def inject_cmd(
     skew: int = typer.Option(
         3600,
         "--skew",
-        help="Clock skew in seconds (neg=backward). Non-zero; ±31536000s max.",
+        help="Clock skew in seconds (neg=backward). ±31536000s max.",
         min=-31_536_000,
         max=31_536_000,
     ),
@@ -704,69 +709,61 @@ def inject_cmd(
         started_at = datetime.now(UTC)
         steps: list[dict[str, object]] = []
 
-        inject_step = _run_step(
-            fault.inject,
-            domain,
-            action="inject",
-            fault_name=fault_name,
-            vm=vm,
-            dry_run=dry_run,
-            inject_params=fault_params,
-            duration_s=duration,
-        )
-        steps.append(inject_step)
-        if inject_step["result"] == "fail":
-            ended_at = datetime.now(UTC)
-            _write_and_print_record(
-                fault_name, vm, resolved_uri, dry_run, started_at, ended_at, steps
-            )
-            raise typer.Exit(code=1)
-
-        verify_step = _run_step(
-            fault.verify, domain, action="verify", fault_name=fault_name, vm=vm, dry_run=dry_run
-        )
-        steps.append(verify_step)
-        if verify_step["result"] == "fail":
-            revert_step = _run_step(
-                fault.revert,
-                domain,
-                action="revert",
-                fault_name=fault_name,
-                vm=vm,
-                dry_run=dry_run,
-            )
-            steps.append(revert_step)
-            ended_at = datetime.now(UTC)
-            _write_and_print_record(
-                fault_name, vm, resolved_uri, dry_run, started_at, ended_at, steps
-            )
-            raise typer.Exit(code=1)
-
         def _sigterm_handler(signum: int, frame: object) -> None:
             raise KeyboardInterrupt
 
         signal.signal(signal.SIGTERM, _sigterm_handler)
 
+        injected = False
         interrupted = False
+        verify_failed = False
         try:
-            if dry_run:
-                typer.echo(f"[dry-run] would: hold {fault_name} on {vm} for {duration}s")
-            elif duration > 0:
-                typer.echo(f"Holding '{fault_name}' on '{vm}' for {duration}s …")
-                time.sleep(duration)
+            inject_step = _run_step(
+                fault.inject,
+                domain,
+                action="inject",
+                fault_name=fault_name,
+                vm=vm,
+                dry_run=dry_run,
+                inject_params=fault_params,
+                duration_s=duration,
+            )
+            steps.append(inject_step)
+            if inject_step["result"] == "fail":
+                ended_at = datetime.now(UTC)
+                _write_and_print_record(
+                    fault_name, vm, resolved_uri, dry_run, started_at, ended_at, steps
+                )
+                raise typer.Exit(code=1)
+
+            injected = True
+
+            verify_step = _run_step(
+                fault.verify, domain, action="verify", fault_name=fault_name, vm=vm, dry_run=dry_run
+            )
+            steps.append(verify_step)
+            verify_failed = verify_step["result"] == "fail"
+
+            if not verify_failed:
+                if dry_run:
+                    typer.echo(f"[dry-run] would: hold {fault_name} on {vm} for {duration}s")
+                elif duration > 0:
+                    typer.echo(f"Holding '{fault_name}' on '{vm}' for {duration}s …")
+                    time.sleep(duration)
         except KeyboardInterrupt:
             interrupted = True
             typer.echo("\nInterrupted — reverting …", err=True)
         finally:
-            revert_step = _run_step(
-                fault.revert,
-                domain,
-                action="revert",
-                fault_name=fault_name,
-                vm=vm,
-                dry_run=dry_run,
-            )
-            steps.append(revert_step)
+            if injected:
+                revert_step = _run_step(
+                    fault.revert,
+                    domain,
+                    action="revert",
+                    fault_name=fault_name,
+                    vm=vm,
+                    dry_run=dry_run,
+                )
+                steps.append(revert_step)
 
         ended_at = datetime.now(UTC)
         _write_and_print_record(
@@ -779,7 +776,7 @@ def inject_cmd(
             steps,
             interrupted=interrupted,
         )
-        if interrupted:
+        if interrupted or verify_failed:
             raise typer.Exit(code=1)
 
 
@@ -1103,6 +1100,7 @@ def _run_experiment_step_on_vm(
                 )
                 raise typer.Exit(code=1)
 
+            interrupted = False
             if dry_run:
                 typer.echo(f"[dry-run] would: hold {step.fault} on {vm_name} for {step.duration}s")
             else:
@@ -1115,6 +1113,7 @@ def _run_experiment_step_on_vm(
                     # interrupted but sibling threads continue until their holds
                     # complete. A shared threading.Event-based stop signal is
                     # needed for fully cooperative cancellation (v0.19 known gap).
+                    interrupted = True
                     typer.echo("Hold interrupted; reverting.", err=True)
 
             revert_step = _run_step(
@@ -1128,7 +1127,14 @@ def _run_experiment_step_on_vm(
             steps_records.append(revert_step)
             ended_at = datetime.now(UTC)
             _write_and_print_record(
-                step.fault, vm_name, resolved_uri, dry_run, started_at, ended_at, steps_records
+                step.fault,
+                vm_name,
+                resolved_uri,
+                dry_run,
+                started_at,
+                ended_at,
+                steps_records,
+                interrupted=interrupted,
             )
             if revert_step["result"] == "fail":
                 raise typer.Exit(code=1)

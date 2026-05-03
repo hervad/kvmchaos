@@ -59,7 +59,7 @@ uv run kvmchaos --connect qemu+ssh://host/system inject vm.pause myvm --yes
 | `net.packet-loss` | Drop N% of packets via `tc netem loss` | Yes |
 | `net.bandwidth` | Cap throughput via `tc netem rate` | Yes |
 | `net.corrupt` | Corrupt N% of packets via `tc netem corrupt` | Yes |
-| `net.partition` | Block all traffic via `iptables` | Yes |
+| `net.partition` | Block all traffic via `tc netem loss 100%` | Yes |
 | `disk.latency` | Throttle disk I/O via cgroup v2 `io.max` | Yes |
 | `disk.fill` | Fill disk space with a junk file | No |
 | `clock.skew` | Skew guest clock via `qemu-guest-agent` | No |

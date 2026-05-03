@@ -135,3 +135,23 @@ class TestStep:
     def test_parallel_set_true(self) -> None:
         s = Step(fault="vm.pause", vm="db1", parallel=True)
         assert s.parallel is True
+
+
+class TestLoadExperimentValidation:
+    def test_negative_duration_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "e.toml"
+        path.write_text('name = "x"\n\n[[step]]\nfault = "vm.pause"\nvm = "s1"\nduration = -1\n')
+        with pytest.raises(ValueError, match="duration"):
+            load_experiment(path)
+
+    def test_empty_vms_list_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "e.toml"
+        path.write_text('name = "x"\n\n[[step]]\nfault = "vm.pause"\nvms = []\n')
+        with pytest.raises(ValueError, match="vms"):
+            load_experiment(path)
+
+    def test_unknown_step_field_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "e.toml"
+        path.write_text('name = "x"\n\n[[step]]\nfault = "vm.pause"\nvm = "s1"\ndurationn = 60\n')
+        with pytest.raises(ValueError, match="unknown"):
+            load_experiment(path)

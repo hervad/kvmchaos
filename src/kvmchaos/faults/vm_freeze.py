@@ -28,8 +28,8 @@ class VmFreezeFault:
     destructive: ClassVar[bool] = False
 
     def __init__(self) -> None:
-        """Initialise with no saved quota."""
-        self._original_quota: int = _QUOTA_UNLIMITED
+        """Initialise with no saved quotas."""
+        self._original_quotas: dict[str, int] = {}
 
     def inject(self, domain: libvirt.virDomain) -> None:
         """Save the current vcpu_quota then set it to 5% of one vCPU period.
@@ -41,7 +41,7 @@ class VmFreezeFault:
             libvirt.libvirtError: If the scheduler call fails.
         """
         params = domain.schedulerParameters()
-        self._original_quota = int(params.get("vcpu_quota", _QUOTA_UNLIMITED))
+        self._original_quotas[domain.name()] = int(params.get("vcpu_quota", _QUOTA_UNLIMITED))
         domain.setSchedulerParameters({"vcpu_quota": _QUOTA_THROTTLED})
 
     def verify(self, domain: libvirt.virDomain) -> None:
@@ -70,4 +70,5 @@ class VmFreezeFault:
         Raises:
             libvirt.libvirtError: If the scheduler call fails.
         """
-        domain.setSchedulerParameters({"vcpu_quota": self._original_quota})
+        quota = self._original_quotas.pop(domain.name(), _QUOTA_UNLIMITED)
+        domain.setSchedulerParameters({"vcpu_quota": quota})

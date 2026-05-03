@@ -55,6 +55,7 @@ class VmStarveFault:
             libvirt.libvirtError: On libvirt API failure.
         """
         threshold = domain.maxMemory() // 2
+        actual = domain.maxMemory()
         for attempt in range(_VERIFY_RETRIES):
             actual = domain.memoryStats().get("actual", domain.maxMemory())
             if actual <= threshold:

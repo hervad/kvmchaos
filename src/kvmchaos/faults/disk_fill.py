@@ -83,8 +83,10 @@ class DiskFillFault:
                     capture_output=True,
                 )
             except subprocess.CalledProcessError as exc:
+                fill.unlink(missing_ok=True)
                 raise RuntimeError(f"disk.fill inject failed for {domain.name()}: {exc}") from exc
         except subprocess.CalledProcessError as exc:
+            fill.unlink(missing_ok=True)
             raise RuntimeError(f"disk.fill inject failed for {domain.name()}: {exc}") from exc
 
     def verify(self, domain: libvirt.virDomain) -> None:

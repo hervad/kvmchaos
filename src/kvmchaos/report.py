@@ -33,7 +33,8 @@ def load_records(runs_dir: Path) -> list[dict[str, object]]:
 
     Returns:
         List of record dicts sorted by ``started_at`` descending. Missing
-        directory, non-JSON files, and unparsable JSON are skipped silently.
+        directory, non-JSON files, and unparsable JSON are skipped with a
+        warning printed to stderr.
     """
     if not runs_dir.is_dir():
         return []
@@ -83,8 +84,10 @@ def generate(output: Path, runs_dir: Path) -> Path:
 def _summary(records: list[dict[str, object]]) -> str:
     """Render the top summary block (total, per-outcome counts, date range)."""
     counts = Counter(str(r.get("outcome", "unknown")) for r in records)
-    start = min(str(r.get("started_at", "")) for r in records)
-    end = max(str(r.get("ended_at", "")) for r in records)
+    starts = [str(r["started_at"]) for r in records if r.get("started_at")]
+    ends = [str(r["ended_at"]) for r in records if r.get("ended_at")]
+    start = min(starts) if starts else ""
+    end = max(ends) if ends else ""
     parts = [
         f"<p>Total: {len(records)}</p>",
         "<ul>"

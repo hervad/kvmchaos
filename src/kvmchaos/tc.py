@@ -111,7 +111,8 @@ def del_root_qdisc(dev: str) -> None:
         capture_output=True,
         text=True,
     )
-    if result.returncode != 0 and "No such file or directory" not in result.stderr:
+    _idempotent = ("No such file or directory", "Cannot find device")
+    if result.returncode != 0 and not any(s in result.stderr for s in _idempotent):
         raise RuntimeError(
             f"tc command failed: tc qdisc del dev {dev} root\n{result.stderr.strip()}"
         )

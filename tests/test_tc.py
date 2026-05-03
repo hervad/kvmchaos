@@ -52,6 +52,12 @@ class TestDelRootQdisc:
             )
             tc.del_root_qdisc("vnet0")  # must not raise
 
+    def test_idempotent_when_tap_device_gone(self):
+        """VM kill destroys the tap device; revert must not raise when device is missing."""
+        with patch("kvmchaos.tc.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stderr='Cannot find device "tap1234"')
+            tc.del_root_qdisc("tap1234")  # must not raise
+
 
 class TestShowQdisc:
     def test_returns_stdout(self):

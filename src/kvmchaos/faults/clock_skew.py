@@ -41,7 +41,7 @@ class ClockSkewFault:
                 shift the clock backward. Default 3600 (1 hour forward).
         """
         self.skew_seconds = skew_seconds
-        self._expected_seconds: int | None = None
+        self._expected: dict[str, int] = {}
 
     def inject(self, domain: libvirt.virDomain) -> None:
         """Shift the guest clock by ``skew_seconds``.
@@ -58,7 +58,7 @@ class ClockSkewFault:
         current = domain.getTime()
         target = current["seconds"] + self.skew_seconds
         domain.setTime({"seconds": target, "nseconds": 0})
-        self._expected_seconds = target
+        self._expected[domain.name()] = target
 
     def verify(self, domain: libvirt.virDomain) -> None:
         """Assert that the guest clock is within tolerance of the skewed value.
@@ -71,14 +71,15 @@ class ClockSkewFault:
                 is not within ``_VERIFY_TOLERANCE`` seconds of the expected value.
             libvirt.libvirtError: If the guest agent call fails.
         """
-        if self._expected_seconds is None:
+        expected = self._expected.get(domain.name())
+        if expected is None:
             raise RuntimeError(f"clock.skew not injected on '{domain.name()}' — call inject first")
         actual = domain.getTime()["seconds"]
-        delta = abs(actual - self._expected_seconds)
+        delta = abs(actual - expected)
         if delta > _VERIFY_TOLERANCE:
             raise RuntimeError(
                 f"clock skew not in effect on '{domain.name()}': "
-                f"expected ~{self._expected_seconds}, got {actual} (delta {delta}s)"
+                f"expected ~{expected}, got {actual} (delta {delta}s)"
             )
 
     def revert(self, domain: libvirt.virDomain) -> None:
@@ -91,8 +92,7 @@ class ClockSkewFault:
             RuntimeError: If inject has not been called.
             libvirt.libvirtError: If the guest agent call fails.
         """
-        if self._expected_seconds is None:
+        if self._expected.pop(domain.name(), None) is None:
             raise RuntimeError(f"clock.skew not injected on '{domain.name()}' — call inject first")
         now = int(time.time())
         domain.setTime({"seconds": now, "nseconds": 0})
-        self._expected_seconds = None

@@ -109,13 +109,33 @@ def load_experiment(path: Path) -> Experiment:
             raise ValueError(f"experiment {path}: step {i}: 'vm' and 'vms' are mutually exclusive")
         vm = str(raw["vm"]) if has_vm else ""
         vms = tuple(str(v) for v in raw.get("vms", []))
+        _known_step_keys = {
+            "fault",
+            "vm",
+            "vms",
+            "parallel",
+            "duration",
+            "bandwidth",
+            "size",
+            "loss",
+            "rate",
+            "corrupt",
+            "skew",
+            "continue_on_failure",
+        }
+        unknown_keys = set(raw.keys()) - _known_step_keys
+        if unknown_keys:
+            raise ValueError(f"experiment {path}: step {i} unknown fields: {sorted(unknown_keys)}")
+        duration = int(raw.get("duration", 20))
+        if duration < 0:
+            raise ValueError(f"experiment {path}: step {i} duration must be >= 0, got {duration}")
         steps.append(
             Step(
                 fault=str(raw["fault"]),
                 vm=vm,
                 vms=vms,
                 parallel=bool(raw.get("parallel", False)),
-                duration=int(raw.get("duration", 20)),
+                duration=duration,
                 bandwidth=int(raw.get("bandwidth", 1)),
                 size=int(raw.get("size", 1024)),
                 loss=int(raw.get("loss", 10)),

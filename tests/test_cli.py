@@ -56,6 +56,47 @@ class TestDoctor:
         assert "libvirtd reachable" in result.stdout
         assert "FAIL" in result.stdout
 
+    def test_cgroup_v2_absent_shows_fail(self, tmp_path, monkeypatch):
+        """When /sys/fs/cgroup/cgroup.controllers is absent, doctor shows FAIL for that check."""
+        from pathlib import Path as RealPath
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        _real_is_file = RealPath.is_file
+
+        def _mock_is_file(self: RealPath) -> bool:
+            if "cgroup.controllers" in str(self):
+                return False
+            return _real_is_file(self)
+
+        with patch.object(RealPath, "is_file", _mock_is_file):
+            result = runner.invoke(app, ["--connect", "test:///default", "doctor"])
+
+        assert "cgroup v2" in result.stdout
+        assert "FAIL" in result.stdout
+        assert result.exit_code == 2
+
+    def test_cgroup_v2_present_shows_ok(self, tmp_path, monkeypatch):
+        """When /sys/fs/cgroup/cgroup.controllers exists, doctor shows ok for that check."""
+        from pathlib import Path as RealPath
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        _real_is_file = RealPath.is_file
+
+        def _mock_is_file(self: RealPath) -> bool:
+            if "cgroup.controllers" in str(self):
+                return True
+            return _real_is_file(self)
+
+        with patch.object(RealPath, "is_file", _mock_is_file):
+            result = runner.invoke(app, ["--connect", "test:///default", "doctor"])
+
+        assert "cgroup v2" in result.stdout
+        # cgroup check must show ok — FAIL must not appear for cgroup line
+        cgroup_line = next((ln for ln in result.stdout.splitlines() if "cgroup v2" in ln), "")
+        assert "ok" in cgroup_line
+
 
 class TestStateName:
     def test_known_states(self):
@@ -781,6 +822,57 @@ class TestAbortAll:
         assert result.exit_code == 1
         assert "Aborted" in result.output
 
+    def test_del_root_qdisc_error_exits_1_with_message(self) -> None:
+        """A RuntimeError from del_root_qdisc must exit 1 and print the error."""
+        import libvirt as _libvirt
+
+        domain = MagicMock()
+        domain.name.return_value = "server1"
+        domain.state.return_value = (_libvirt.VIR_DOMAIN_RUNNING, 1)
+
+        with (
+            patch("kvmchaos.cli.connect") as mock_conn,
+            patch("kvmchaos.tc.tap_device", return_value="vnet0"),
+            patch("kvmchaos.tc.show_qdisc", return_value="qdisc netem 8001: root"),
+            patch("kvmchaos.tc.del_root_qdisc", side_effect=RuntimeError("permission denied")),
+            patch("kvmchaos.cli.confirm", return_value=True),
+        ):
+            mock_conn.return_value.__enter__.return_value.listAllDomains.return_value = [domain]
+            result = runner.invoke(app, ["abort-all", "--yes"])
+        assert result.exit_code == 1
+        assert "ERROR" in result.output
+
+
+class TestParseSince:
+    def test_date_only_becomes_midnight_utc(self) -> None:
+        from datetime import UTC, datetime
+
+        from kvmchaos.cli import _parse_since
+
+        result = _parse_since("2026-04-22")
+        assert result == datetime(2026, 4, 22, 0, 0, 0, tzinfo=UTC)
+
+    def test_datetime_with_tz_preserved(self) -> None:
+        from datetime import UTC, datetime
+
+        from kvmchaos.cli import _parse_since
+
+        result = _parse_since("2026-04-22T10:30:00+00:00")
+        assert result == datetime(2026, 4, 22, 10, 30, 0, tzinfo=UTC)
+
+    def test_none_returns_none(self) -> None:
+        from kvmchaos.cli import _parse_since
+
+        assert _parse_since(None) is None
+
+    def test_garbage_raises_bad_parameter(self) -> None:
+        import typer
+
+        from kvmchaos.cli import _parse_since
+
+        with pytest.raises(typer.BadParameter, match="ISO 8601"):
+            _parse_since("not-a-date")
+
 
 class TestRunCmd:
     def test_step_outcome_failure_returned_not_raised(self, tmp_path, monkeypatch) -> None:
@@ -800,6 +892,37 @@ class TestRunCmd:
         assert isinstance(outcome, _StepOutcome)
         assert outcome.success is False
         assert outcome.vm == "missing-vm"
+
+    def test_interrupted_experiment_step_records_interrupted_outcome(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Hold cut short by KeyboardInterrupt must write outcome=interrupted to the run record."""
+        import json
+        from unittest.mock import patch
+
+        from kvmchaos.cli import _run_experiment_step_on_vm
+        from kvmchaos.experiment import Step
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        step = Step(fault="vm.pause", vm="test", duration=30)
+
+        with patch("kvmchaos.cli.time.sleep", side_effect=KeyboardInterrupt):
+            _run_experiment_step_on_vm(
+                step,
+                "test",
+                resolved_uri="test:///default",
+                dry_run=False,
+                config_path=None,
+                force=True,
+            )
+
+        runs_dir = tmp_path / "kvmchaos" / "runs"
+        records = list(runs_dir.glob("*.json"))
+        assert len(records) == 1
+        data = json.loads(records[0].read_text())
+        assert data["outcome"] == "interrupted"
+        assert any(s["action"] == "revert" for s in data["steps"])
 
     def test_fan_out_calls_all_vms(self, tmp_path, monkeypatch) -> None:
         """_run_experiment_step calls _run_experiment_step_on_vm for each VM in step.vms."""
