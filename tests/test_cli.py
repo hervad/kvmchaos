@@ -932,7 +932,9 @@ class TestRunCmd:
 
         called: list[str] = []
 
-        def fake_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+        def fake_on_vm(
+            step, vm_name, *, resolved_uri, dry_run, config_path, force, stop_event=None
+        ):
             called.append(vm_name)
             return _StepOutcome(vm=vm_name, success=True)
 
@@ -958,7 +960,9 @@ class TestRunCmd:
 
         called: list[str] = []
 
-        def fake_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+        def fake_on_vm(
+            step, vm_name, *, resolved_uri, dry_run, config_path, force, stop_event=None
+        ):
             called.append(vm_name)
             success = vm_name != "bad"
             return _StepOutcome(vm=vm_name, success=success, exit_code=0 if success else 1)
@@ -1006,7 +1010,9 @@ class TestRunCmd:
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
 
-        def slow_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+        def slow_on_vm(
+            step, vm_name, *, resolved_uri, dry_run, config_path, force, stop_event=None
+        ):
             time_mod.sleep(0.08)
             return _StepOutcome(vm=vm_name, success=True)
 
@@ -1051,7 +1057,9 @@ class TestRunCmd:
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
 
-        def fake_on_vm(step, vm_name, *, resolved_uri, dry_run, config_path, force):
+        def fake_on_vm(
+            step, vm_name, *, resolved_uri, dry_run, config_path, force, stop_event=None
+        ):
             success = vm_name != "bad"
             return _StepOutcome(vm=vm_name, success=success, exit_code=0 if success else 1)
 

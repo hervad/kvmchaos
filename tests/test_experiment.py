@@ -182,6 +182,38 @@ class TestCollectParallelBatch:
         assert len(_collect_parallel_batch(steps, 1)) == 2
 
 
+class TestStopEventCancellation:
+    def test_stop_event_interrupts_hold(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Worker must exit the hold early when the stop event is set."""
+        import threading
+        import time
+
+        from kvmchaos.cli import _run_experiment_step_on_vm
+        from kvmchaos.experiment import Step
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+        stop = threading.Event()
+        step = Step(fault="vm.pause", vm="test", duration=60)
+
+        # Set stop event after 0.15s — hold should abort well before 60s
+        threading.Timer(0.15, stop.set).start()
+        t0 = time.monotonic()
+        _run_experiment_step_on_vm(
+            step,
+            "test",
+            resolved_uri="test:///default",
+            dry_run=False,
+            config_path=None,
+            force=True,
+            stop_event=stop,
+        )
+        elapsed = time.monotonic() - t0
+        assert elapsed < 5, f"hold was not interrupted (took {elapsed:.1f}s)"
+
+
 class TestLoadExperimentValidation:
     def test_negative_duration_raises(self, tmp_path: Path) -> None:
         path = tmp_path / "e.toml"

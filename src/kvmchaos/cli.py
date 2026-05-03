@@ -14,6 +14,7 @@ from __future__ import annotations
 import functools
 import json
 import signal
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -972,6 +973,7 @@ def _run_experiment_step_on_vm(
     dry_run: bool,
     config_path: Path | None,
     force: bool,
+    stop_event: threading.Event | None = None,
 ) -> _StepOutcome:
     """Execute a single experiment step on one VM.
 
@@ -982,6 +984,8 @@ def _run_experiment_step_on_vm(
         dry_run: If True, print plan only.
         config_path: Optional config file override.
         force: If True, bypass safety checks.
+        stop_event: When set by a sibling worker or the main thread, the hold
+            loop exits early and revert runs immediately.
 
     Returns:
         _StepOutcome with success=True on clean completion, False otherwise.
@@ -1085,16 +1089,23 @@ def _run_experiment_step_on_vm(
                 typer.echo(f"[dry-run] would: hold {step.fault} on {vm_name} for {step.duration}s")
             else:
                 typer.echo(f"Holding '{step.fault}' on '{vm_name}' for {step.duration}s …")
-                try:
-                    time.sleep(step.duration)
-                except KeyboardInterrupt:
-                    # Python delivers KeyboardInterrupt to the main thread only.
-                    # In a fan-out worker this catch is best-effort: the sleep is
-                    # interrupted but sibling threads continue until their holds
-                    # complete. A shared threading.Event-based stop signal is
-                    # needed for fully cooperative cancellation (v0.19 known gap).
-                    interrupted = True
-                    typer.echo("Hold interrupted; reverting.", err=True)
+                remaining = float(step.duration)
+                _poll = 0.1
+                while remaining > 0:
+                    chunk = min(_poll, remaining)
+                    try:
+                        time.sleep(chunk)
+                    except KeyboardInterrupt:
+                        interrupted = True
+                        typer.echo("Hold interrupted; reverting.", err=True)
+                        if stop_event is not None:
+                            stop_event.set()
+                        break
+                    if stop_event is not None and stop_event.is_set():
+                        interrupted = True
+                        typer.echo("Hold interrupted by sibling; reverting.", err=True)
+                        break
+                    remaining -= chunk
 
             revert_step = _run_step(
                 fault.revert,
@@ -1132,6 +1143,7 @@ def _run_experiment_step(
     dry_run: bool,
     config_path: Path | None,
     force: bool,
+    max_workers: int = 8,
 ) -> list[_StepOutcome]:
     """Fan out step across all target VMs, executing in parallel.
 
@@ -1141,11 +1153,12 @@ def _run_experiment_step(
         dry_run: If True, print plan only.
         config_path: Optional config file override.
         force: If True, bypass safety checks.
+        max_workers: Maximum number of parallel worker threads. Default 8.
 
     Returns:
         One :class:`_StepOutcome` per VM in ``step.vms``.
     """
-    max_workers = min(len(step.vms), 8)
+    stop_event = threading.Event()
     worker = functools.partial(
         _run_experiment_step_on_vm,
         step,
@@ -1153,8 +1166,9 @@ def _run_experiment_step(
         dry_run=dry_run,
         config_path=config_path,
         force=force,
+        stop_event=stop_event,
     )
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+    with ThreadPoolExecutor(max_workers=min(len(step.vms), max_workers)) as pool:
         return list(pool.map(worker, step.vms))
 
 
