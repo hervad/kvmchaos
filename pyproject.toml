@@ -6,21 +6,39 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Vadym Herman" }]
-keywords = ["kvm", "libvirt", "chaos-engineering", "testing"]
+keywords = [
+    "kvm",
+    "libvirt",
+    "chaos-engineering",
+    "fault-injection",
+    "resilience",
+    "sre",
+    "qemu",
+    "netem",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Testing",
     "Topic :: System :: Emulators",
+    "Topic :: System :: Systems Administration",
 ]
 dependencies = [
     "libvirt-python>=12.2.0",
     "typer>=0.12",
 ]
+
+[project.urls]
+Homepage = "https://github.com/hervad/kvmchaos"
+Issues = "https://github.com/hervad/kvmchaos/issues"
+Changelog = "https://github.com/hervad/kvmchaos/blob/main/CHANGELOG.md"
 
 [project.scripts]
 kvmchaos = "kvmchaos.cli:app"

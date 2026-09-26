@@ -33,3 +33,18 @@ patterns = ["staging-*", "qa-*"]
 [rate_limit]
 injects_per_hour = 20
 min_interval_between_destructive_seconds = 300
+
+# ---------------------------------------------------------------------------
+# Notifier — POST lifecycle events to a webhook (Slack relay, alerting, CI).
+#
+# Omit the section (or leave webhook_url empty) to disable. `events` filters
+# which event types are sent; omit it to send all of: inject.start,
+# inject.success, inject.error, revert.success, revert.error,
+# experiment.start, experiment.end.
+# ---------------------------------------------------------------------------
+
+# [notifier]
+# webhook_url = "https://hooks.example.com/kvmchaos"
+# auth_header = "Bearer <token>"
+# timeout_s = 3
+# events = ["inject.error", "revert.error"]

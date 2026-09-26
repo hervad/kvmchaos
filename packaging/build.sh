@@ -19,7 +19,8 @@ cp dist/kvmchaos        ~/rpmbuild/SOURCES/kvmchaos
 cp packaging/kvmchaos.spec ~/rpmbuild/SPECS/kvmchaos.spec
 
 # Build RPM
-rpmbuild -bb ~/rpmbuild/SPECS/kvmchaos.spec
+VERSION="$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+rpmbuild -bb --define "pkg_version ${VERSION}" ~/rpmbuild/SPECS/kvmchaos.spec
 
 RPM=$(ls ~/rpmbuild/RPMS/x86_64/kvmchaos-*.rpm)
 echo "Built: $RPM"

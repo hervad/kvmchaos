@@ -81,7 +81,7 @@ All notable changes to kvmchaos. Format loosely follows
 - `experiment.parallel_batch` DEBUG observability event emitted when a
   parallel batch starts.
 
-## [0.18.0] — TBD
+## [0.18.0] — 2026-04-24
 
 ### Added
 - Self-contained binary RPM for air-gapped RHEL 9 deployment
@@ -247,7 +247,6 @@ All notable changes to kvmchaos. Format loosely follows
 - Initial release: `vm.pause`, `vm.kill`.
 - CLI: `--version`, `list-vms`, `list-faults`, `inject`.
 
-[Unreleased]: https://github.com/kai/kvmchaos/compare/v0.14.0...HEAD
-[0.14.0]: https://github.com/kai/kvmchaos/releases/tag/v0.14.0
-[0.13.0]: https://github.com/kai/kvmchaos/releases/tag/v0.13.0
-[0.12.0]: https://github.com/kai/kvmchaos/releases/tag/v0.12.0
+[Unreleased]: https://github.com/hervad/kvmchaos/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/hervad/kvmchaos/compare/v0.18.0...v0.20.0
+[0.18.0]: https://github.com/hervad/kvmchaos/releases/tag/v0.18.0

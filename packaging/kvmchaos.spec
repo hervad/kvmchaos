@@ -1,7 +1,9 @@
 Name:           kvmchaos
-Version:        0.18.0
+# Injected by packaging/build.sh from pyproject.toml so the RPM never drifts.
+Version:        %{pkg_version}
 Release:        1%{?dist}
-Summary:        KVM chaos engineering CLI
+Summary:        Agent-less chaos engineering CLI for KVM/libvirt VMs
+URL:            https://github.com/hervad/kvmchaos
 License:        MIT
 BuildArch:      x86_64
 
